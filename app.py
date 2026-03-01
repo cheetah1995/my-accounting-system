@@ -287,16 +287,19 @@ elif menu == "Entry Module":
             for _, r in lines_df.iterrows():
                 if (r['debit'] > 0 or r['credit'] > 0) and r['account'] is not None:
                     final_entries.append({
-                        'voucher_no': v_no, 
-                        'tr_type': v_type, 
-                        'tr_date': date, 
-                        'party': party,
-                        'ref_no': ref, 
-                        'description': r['description'] if r['description'] else desc,
-                        'account_name': r['account'], 
-                        'debit': r['debit'], 
-                        'credit': r['credit']
-                    })
+    "tr_date": tr_date,
+    "tr_type": tr_type,
+    "voucher_no": v_no,
+    "party": party,
+    "description": description,
+    "account_name": acc_name,
+    "debit": debit_val,
+    "credit": credit_val,
+    # --- ADD THESE NOW ---
+    "created_by": st.session_state.get('username', 'Admin'), 
+    "created_at": datetime.now(),
+    "is_void": 0
+})
             
             try:
                 pd.DataFrame(final_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
