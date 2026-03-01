@@ -446,15 +446,9 @@ elif menu == "Trial Balance":
 
 # --- MODULE: SETTINGS ---
 elif menu == "Settings / Import":
-    st.title("⚙️ Administration")
-    
-    with st.expander("Dangerous: Database Reset"):
-        if st.button("🗑️ Wipe All Chart of Accounts"):
-            with engine.connect() as conn:
-                conn.execute(text("TRUNCATE TABLE chart_of_accounts RESTART IDENTITY CASCADE"))
-                conn.commit()
-            st.rerun()
- if st.button("🛠️ Upgrade Database for Multi-Currency"):
+    st.title("⚙️ System Settings")
+
+    if st.button("🛠️ Upgrade Database for Multi-Currency"):
         try:
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE general_ledger ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'LKR'"))
@@ -464,6 +458,16 @@ elif menu == "Settings / Import":
             st.success("✅ Database upgraded! You can now track USD and EUR transactions.")
         except Exception as e:
             st.error(f"Update Error: {e}")
+
+    # ... rest of your settings code ...
+    
+    with st.expander("Dangerous: Database Reset"):
+        if st.button("🗑️ Wipe All Chart of Accounts"):
+            with engine.connect() as conn:
+                conn.execute(text("TRUNCATE TABLE chart_of_accounts RESTART IDENTITY CASCADE"))
+                conn.commit()
+            st.rerun()
+ 
 
     # ... rest of your settings code ...
     st.subheader("Import Chart of Accounts")
