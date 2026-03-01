@@ -142,7 +142,8 @@ account_list = load_accounts()
 menu = st.sidebar.radio("Main Menu", ["Entry Module", "General Ledger", "Trial Balance", "Settings / Import"])
 
 # --- MODULE: ENTRY ---
-if menu == "Entry Module":
+# --- MODULE: ENTRY ---
+elif menu == "Entry Module":
     st.title("⚖️ Multi-Row Transaction Entry")
     if not account_list:
         st.warning("Please import Chart of Accounts first.")
@@ -159,14 +160,22 @@ if menu == "Entry Module":
         desc = st.text_area("General Remarks")
 
     st.markdown("### Transaction Lines")
-    # Table initialization
-    init_data = [{"account": None, "description": "", "debit": 0.0, "credit": 0.0}] * 2
-    edited_df = st.data_editor(init_data, column_config={
-        "account": st.column_config.SelectboxColumn("Account", options=account_list, required=True),
-        "debit": st.column_config.NumberColumn("Debit", min_value=0, format="%.2f"),
-        "credit": st.column_config.NumberColumn("Credit", min_value=0, format="%.2f"),
-        "description": st.column_config.TextColumn("Line Note")
-    }, num_rows="dynamic", use_container_width=True, key="ed_form")
+    # Initial setup for the data editor
+    if "editor_rows" not in st.session_state:
+        st.session_state.editor_rows = [{"account": None, "description": "", "debit": 0.0, "credit": 0.0}] * 2
+
+    edited_df = st.data_editor(
+        st.session_state.editor_rows, 
+        column_config={
+            "account": st.column_config.SelectboxColumn("Account", options=account_list, required=True),
+            "debit": st.column_config.NumberColumn("Debit", min_value=0, format="%.2f"),
+            "credit": st.column_config.NumberColumn("Credit", min_value=0, format="%.2f"),
+            "description": st.column_config.TextColumn("Line Note")
+        }, 
+        num_rows="dynamic", 
+        use_container_width=True, 
+        key="ed_form"
+    )
 
     lines_df = pd.DataFrame(edited_df)
     total_dr = lines_df['debit'].sum()
@@ -183,54 +192,59 @@ if menu == "Entry Module":
         if diff == 0 and total_dr > 0:
             final_entries = []
             for _, r in lines_df.iterrows():
-                if r['debit'] > 0 or r['credit'] > 0:
+                if (r['debit'] > 0 or r['credit'] > 0) and r['account'] is not None:
                     final_entries.append({
-                        'voucher_no': v_no, 'tr_type': v_type, 'tr_date': date, 'party': party,
-                        'ref_no': ref, 'description': r['description'] if r['description'] else desc,
-                        'account_name': r['account'], 'debit': r['debit'], 'credit': r['credit']
+                        'voucher_no': v_no, 
+                        'tr_type': v_type, 
+                        'tr_date': date, 
+                        'party': party,
+                        'ref_no': ref, 
+                        'description': r['description'] if r['description'] else desc,
+                        'account_name': r['account'], 
+                        'debit': r['debit'], 
+                        'credit': r['credit']
                     })
-                           try:
-                # 1. Save to Database
+            
+            try:
                 pd.DataFrame(final_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
-                
-                # 2. Save to Session State (Make sure this matches the names above!)
+                # Store data for the PDF generator
                 st.session_state['last_post'] = {
-                    'meta': (v_no, v_type, date, party, ref, desc), 
+                    'v_no': v_no, 'v_type': v_type, 'date': date, 
+                    'party': party, 'ref': ref, 'desc': desc, 
                     'lines': final_entries
                 }
-                
                 st.success(f"Voucher {v_no} Posted Successfully!")
-                st.rerun() # 3. Refresh to show the download button
-            except Exception as e: 
+                st.rerun()
+            except Exception as e:
                 st.error(f"SQL Error: {e}")
+        else:
+            st.error("Entry is out of balance or missing account names.")
 
-        # Show PDF button after posting
+    # Show PDF button after posting
     if 'last_post' in st.session_state and st.session_state['last_post'] is not None:
         lp = st.session_state['last_post']
         
-        # Safety check: Ensure 'meta' and 'lines' exist in the dictionary
-        if 'meta' in lp and 'lines' in lp:
-            pdf_file = generate_voucher_pdf(
-                v_no=lp['meta'][0],
-                v_type=lp['meta'][1],
-                date=lp['meta'][2],
-                party=lp['meta'][3],
-                ref=lp['meta'][4],
-                desc=lp['meta'][5],
-                entries_list=lp['lines']
-            )
-            
-            st.download_button(
-                label=f"🖨️ Download Voucher {lp['meta'][0]}",
-                data=pdf_file,
-                file_name=f"Voucher_{lp['meta'][0]}.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
-            
-            if st.button("Clear and Start New Entry"):
-                st.session_state['last_post'] = None
-                st.rerun()
+        pdf_file = generate_voucher_pdf(
+            v_no=lp['v_no'], 
+            v_type=lp['v_type'], 
+            date=lp['date'], 
+            party=lp['party'], 
+            ref=lp['ref'], 
+            desc=lp['desc'], 
+            entries_list=lp['lines']
+        )
+        
+        st.download_button(
+            label=f"🖨️ Download Voucher {lp['v_no']}", 
+            data=pdf_file, 
+            file_name=f"Voucher_{lp['v_no']}.pdf", 
+            mime="application/pdf", 
+            use_container_width=True
+        )
+        
+        if st.button("New Entry"):
+            st.session_state['last_post'] = None
+            st.rerun()
 # --- MODULE: GENERAL LEDGER ---
 elif menu == "General Ledger":
     st.title("📖 General Ledger Archive")
