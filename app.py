@@ -139,7 +139,7 @@ df = load_ledger()
 account_list = load_accounts()
 
 # --- 3. NAVIGATION ---
-menu = st.sidebar.radio("Main Menu", ["Entry Module", "General Ledger", "Trial Balance", "Settings / Import"])
+menu = st.sidebar.radio("Main Menu", ["Entry Module", "General Ledger", "Trial Balance", "Profit & Loss", "Settings / Import"])
 
 # ... (PDF function and database setup above) ...
 
@@ -402,3 +402,69 @@ elif menu == "Settings / Import":
         if st.button("🚀 Confirm Upload"):
             import_df.to_sql('chart_of_accounts', engine, if_exists='append', index=False)
             st.success("Accounts Added!")
+# --- MODULE: PROFIT & LOSS ---
+elif menu == "Profit & Loss":
+    st.title("📈 Income Statement (Profit & Loss)")
+    
+    # 1. Date Filter for the Period
+    c1, c2 = st.columns(2)
+    s_date = c1.date_input("Start Period", value=datetime(datetime.now().year, datetime.now().month, 1))
+    e_date = c2.date_input("End Period", value=datetime.now())
+    
+    # Load Ledger and Account Types
+    try:
+        # Join Ledger with Chart of Accounts to get the 'account_type'
+        query = """
+            SELECT gl.*, coa.account_type 
+            FROM general_ledger gl
+            LEFT JOIN chart_of_accounts coa ON gl.account_name = coa.account_name
+        """
+        full_df = pd.read_sql(query, engine)
+        full_df['tr_date'] = pd.to_datetime(full_df['tr_date']).dt.date
+        
+        # Filter by Date
+        mask = (full_df['tr_date'] >= s_date) & (full_df['tr_date'] <= e_date)
+        report_df = full_df.loc[mask]
+        
+        if report_df.empty:
+            st.warning("No transactions found for this period.")
+        else:
+            # 2. Calculate Revenue
+            rev_df = report_df[report_df['account_type'] == 'Revenue']
+            total_revenue = rev_df['credit'].sum() - rev_df['debit'].sum()
+            
+            # 3. Calculate Expenses
+            exp_df = report_df[report_df['account_type'] == 'Expense']
+            total_expenses = exp_df['debit'].sum() - exp_df['credit'].sum()
+            
+            # 4. Net Profit
+            net_profit = total_revenue - total_expenses
+            
+            # --- DISPLAY METRICS ---
+            st.divider()
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Total Revenue", f"LKR {total_revenue:,.2f}")
+            m2.metric("Total Expenses", f"LKR {total_expenses:,.2f}", delta=-total_expenses, delta_color="inverse")
+            m3.metric("Net Profit", f"LKR {net_profit:,.2f}", delta=net_profit)
+            
+            # --- DETAILED VIEW ---
+            col_rev, col_exp = st.columns(2)
+            
+            with col_rev:
+                st.subheader("💰 Revenue Breakdown")
+                rev_summary = rev_df.groupby('account_name').apply(lambda x: x['credit'].sum() - x['debit'].sum())
+                st.table(rev_summary.rename("Amount"))
+                
+            with col_exp:
+                st.subheader("💸 Expense Breakdown")
+                exp_summary = exp_df.groupby('account_name').apply(lambda x: x['debit'].sum() - x['credit'].sum())
+                st.table(exp_summary.rename("Amount"))
+
+            # --- EXPORT REPORT ---
+            st.divider()
+            if st.button("📊 Export P&L to CSV"):
+                csv = report_df.to_csv(index=False).encode('utf-8')
+                st.download_button("Download Report", csv, f"PL_Report_{s_date}.csv", "text/csv")
+
+    except Exception as e:
+        st.error(f"Error generating report: {e}. Ensure your Chart of Accounts has 'account_type' defined as Revenue or Expense.")
