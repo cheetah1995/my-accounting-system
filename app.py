@@ -32,26 +32,52 @@ menu = st.sidebar.radio("Main Menu", ["Entry Module", "General Ledger", "Trial B
 
 if menu == "Settings / Import":
     st.title("⚙️ Admin Settings")
-    st.subheader("Import Chart of Accounts")
-    st.write("Upload a CSV with a column named **account_name**")
     
-    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+    # --- TEMPLATE SECTION ---
+    st.subheader("1. Download Import Template")
+    st.write("Use this template to format your Chart of Accounts correctly.")
+    
+    # Create a simple template dataframe
+    template_data = pd.DataFrame({
+        'account_name': ['Cash in Hand', 'Bank Account', 'Sales Revenue', 'Rent Expense'],
+        'account_type': ['Asset', 'Asset', 'Revenue', 'Expense']
+    })
+    
+    # Convert to CSV
+    template_csv = template_data.to_csv(index=False).encode('utf-8')
+    
+    st.download_button(
+        label="📥 Download CSV Template",
+        data=template_csv,
+        file_name="coa_template.csv",
+        mime="text/csv",
+    )
+    
+    st.divider()
+
+    # --- UPLOAD SECTION ---
+    st.subheader("2. Upload Chart of Accounts")
+    st.info("Ensure your file has a column named **account_name**.")
+    
+    uploaded_file = st.file_uploader("Choose your formatted CSV file", type="csv")
+    
     if uploaded_file is not None:
         import_df = pd.read_csv(uploaded_file)
-        st.write("Preview of Upload:", import_df.head())
         
-        if st.button("Confirm & Push to Database"):
+        # Data Cleaning: Remove empty rows and duplicates
+        import_df = import_df.dropna(subset=['account_name'])
+        
+        st.write("Preview of data to be imported:")
+        st.dataframe(import_df.head(), use_container_width=True)
+        
+        if st.button("🚀 Push to Database"):
             try:
-                # Keep only relevant columns
-                to_db = import_df[['account_name']]
-                if 'account_type' in import_df.columns:
-                    to_db = import_df[['account_name', 'account_type']]
-                
-                to_db.to_sql('chart_of_accounts', engine, if_exists='append', index=False)
-                st.success(f"Successfully imported {len(to_db)} accounts!")
+                # We use a 'try' block because the 'account_name' must be UNIQUE in SQL
+                import_df.to_sql('chart_of_accounts', engine, if_exists='append', index=False)
+                st.success(f"Successfully imported {len(import_df)} new accounts!")
                 st.rerun()
             except Exception as e:
-                st.error(f"Error: {e} (Check if account names already exist)")
+                st.error("Error: It looks like some of these accounts already exist in the database.")
 
 elif menu == "Entry Module":
     st.title("⚖️ New Transaction")
