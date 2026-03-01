@@ -192,28 +192,37 @@ if menu == "Settings / Import":
 # --- MODULE: ENTRY MODULE ---
 elif menu == "Entry Module":
     st.title("⚖️ Multi-Row Transaction Entry")
-    # ... rest of your entry module code ...
+    
     if not account_list:
         st.warning("Please import Chart of Accounts first.")
         st.stop()
 
+    # 1. GENERATE VOUCHER NUMBER (Always visible at top)
     v_type = st.selectbox("Transaction Type", ["Payment Voucher", "Cash Receipt", "Sales Entry", "Journal Entry"])
     v_no = get_next_v(v_type)
     
+    st.subheader(f"Document No: {v_no}")
+
+    # 2. RESET LOGIC FOR NEW ENTRIES
+    if "editor_key" not in st.session_state:
+        st.session_state.editor_key = 0  # We use this to force-refresh the data_editor
+
+    # Define default empty rows
+    default_rows = [{"account": None, "description": "", "debit": 0.0, "credit": 0.0}] * 2
+
+    # 3. HEADER FORM
     with st.container(border=True):
         c1, c2, c3 = st.columns(3)
         date = c1.date_input("Date", datetime.now())
-        party = c2.text_input("Payee/Customer")
-        ref = c3.text_input("Reference/Ref")
-        desc = st.text_area("General Remarks")
+        party = c2.text_input("Payee/Customer", placeholder="e.g. Supplier Name")
+        ref = c3.text_input("Reference/Ref", placeholder="e.g. Inv-001")
+        desc = st.text_area("General Remarks", placeholder="Enter overall transaction details...")
 
     st.markdown("### Transaction Lines")
-    # Initial setup for the data editor
-    if "editor_rows" not in st.session_state:
-        st.session_state.editor_rows = [{"account": None, "description": "", "debit": 0.0, "credit": 0.0}] * 2
-
+    
+    # 4. DATA EDITOR (Using a dynamic key to allow clearing)
     edited_df = st.data_editor(
-        st.session_state.editor_rows, 
+        default_rows, 
         column_config={
             "account": st.column_config.SelectboxColumn("Account", options=account_list, required=True),
             "debit": st.column_config.NumberColumn("Debit", min_value=0, format="%.2f"),
@@ -222,7 +231,7 @@ elif menu == "Entry Module":
         }, 
         num_rows="dynamic", 
         use_container_width=True, 
-        key="ed_form"
+        key=f"editor_{st.session_state.editor_key}" # Changing this key wipes the table
     )
 
     lines_df = pd.DataFrame(edited_df)
@@ -234,9 +243,10 @@ elif menu == "Entry Module":
     m1, m2, m3 = st.columns(3)
     m1.metric("Total DR", f"{total_dr:,.2f}")
     m2.metric("Total CR", f"{total_cr:,.2f}")
-    m3.metric("Balance", f"{diff:,.2f}", delta=diff, delta_color="inverse")
+    m3.metric("Balance Status", "Balanced" if diff == 0 else "Out of Balance", delta=diff, delta_color="inverse")
     
-    if st.button("🚀 Post Transaction"):
+    # 5. POSTING LOGIC
+    if st.button("🚀 Post Transaction", use_container_width=True):
         if diff == 0 and total_dr > 0:
             final_entries = []
             for _, r in lines_df.iterrows():
@@ -255,42 +265,43 @@ elif menu == "Entry Module":
             
             try:
                 pd.DataFrame(final_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
-                # Store data for the PDF generator
+                
+                # Save PDF data BEFORE we clear the screen
                 st.session_state['last_post'] = {
                     'v_no': v_no, 'v_type': v_type, 'date': date, 
                     'party': party, 'ref': ref, 'desc': desc, 
                     'lines': final_entries
                 }
-                st.success(f"Voucher {v_no} Posted Successfully!")
+                st.success(f"Successfully Posted {v_no}!")
                 st.rerun()
             except Exception as e:
                 st.error(f"SQL Error: {e}")
         else:
-            st.error("Entry is out of balance or missing account names.")
+            st.error("Cannot post: Check if accounts are selected and Debits = Credits.")
 
-    # Show PDF button after posting
+    # 6. DOWNLOAD & RESET BUTTONS
     if 'last_post' in st.session_state and st.session_state['last_post'] is not None:
         lp = st.session_state['last_post']
         
         pdf_file = generate_voucher_pdf(
-            v_no=lp['v_no'], 
-            v_type=lp['v_type'], 
-            date=lp['date'], 
-            party=lp['party'], 
-            ref=lp['ref'], 
-            desc=lp['desc'], 
+            v_no=lp['v_no'], v_type=lp['v_type'], date=lp['date'], 
+            party=lp['party'], ref=lp['ref'], desc=lp['desc'], 
             entries_list=lp['lines']
         )
         
         st.download_button(
-            label=f"🖨️ Download Voucher {lp['v_no']}", 
+            label=f"📥 Download Voucher {lp['v_no']} (PDF)", 
             data=pdf_file, 
             file_name=f"Voucher_{lp['v_no']}.pdf", 
             mime="application/pdf", 
             use_container_width=True
         )
         
-        if st.button("New Entry"):
+        if st.button("➕ Create Another New Entry", type="primary"):
+            # This is the "Clear" magic: 
+            # 1. Change the key to reset the table
+            # 2. Clear the last_post session state
+            st.session_state.editor_key += 1 
             st.session_state['last_post'] = None
             st.rerun()
 # --- MODULE: GENERAL LEDGER ---
