@@ -1,21 +1,26 @@
 import streamlit as st
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from datetime import datetime
 
 # PAGE CONFIG
 st.set_page_config(page_title="SQL ERP Pro", layout="wide")
 
 # 1. DATABASE CONNECTION
-DB_URL = st.secrets["connections"]["postgresql"]["url"]
-engine = create_engine(DB_URL)
+try:
+    DB_URL = st.secrets["connections"]["postgresql"]["url"]
+    engine = create_engine(DB_URL)
+except Exception as e:
+    st.error("Database connection configuration missing!")
+    st.stop()
 
 # 2. DATA LOADERS
 def load_ledger():
     try:
+        # We order by ID desc to ensure the latest entries appear first
         return pd.read_sql("SELECT * FROM general_ledger ORDER BY tr_date DESC, id DESC", engine)
     except:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=['voucher_no', 'tr_type', 'tr_date', 'party', 'ref_no', 'description', 'account_name', 'debit', 'credit'])
 
 def load_accounts():
     try:
@@ -24,70 +29,86 @@ def load_accounts():
     except:
         return []
 
+# Load initial data
 df = load_ledger()
 account_list = load_accounts()
 
+# 3. VOUCHER GENERATOR LOGIC
+def get_next_v(v_type):
+    prefix_map = {"Payment Voucher": "PV", "Cash Receipt": "CR", "Sales Entry": "SJ", "Journal Entry": "JV"}
+    prefix = prefix_map.get(v_type, "JV")
+    
+    if df.empty:
+        return f"{prefix}-001"
+    
+    filtered = df[df['voucher_no'].str.startswith(prefix, na=False)]
+    if filtered.empty:
+        return f"{prefix}-001"
+    
+    try:
+        # Extract number from the latest voucher (e.g., 'PV-005' -> 5)
+        last_val = filtered['voucher_no'].iloc[0]
+        last_num = int(last_val.split("-")[1])
+        return f"{prefix}-{last_num + 1:03d}"
+    except:
+        return f"{prefix}-001"
+
 # --- SIDEBAR NAVIGATION ---
+st.sidebar.title("Navigation")
 menu = st.sidebar.radio("Main Menu", ["Entry Module", "General Ledger", "Trial Balance", "Settings / Import"])
 
+# --- MODULE: SETTINGS / IMPORT ---
 if menu == "Settings / Import":
     st.title("⚙️ Admin Settings")
     
-    # --- TEMPLATE SECTION ---
-    st.subheader("1. Download Import Template")
-    st.write("Use this template to format your Chart of Accounts correctly.")
+    col1, col2 = st.columns(2)
     
-    # Create a simple template dataframe
-    template_data = pd.DataFrame({
-        'account_name': ['Cash in Hand', 'Bank Account', 'Sales Revenue', 'Rent Expense'],
-        'account_type': ['Asset', 'Asset', 'Revenue', 'Expense']
-    })
+    with col1:
+        st.subheader("1. Download Template")
+        template_data = pd.DataFrame({
+            'account_name': ['Cash in Hand', 'Bank Account', 'Sales Revenue', 'Rent Expense'],
+            'account_type': ['Asset', 'Asset', 'Revenue', 'Expense']
+        })
+        template_csv = template_data.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download CSV Template", data=template_csv, file_name="coa_template.csv", mime="text/csv")
     
-    # Convert to CSV
-    template_csv = template_data.to_csv(index=False).encode('utf-8')
-    
-    st.download_button(
-        label="📥 Download CSV Template",
-        data=template_csv,
-        file_name="coa_template.csv",
-        mime="text/csv",
-    )
-    
-    st.divider()
+    with col2:
+        st.subheader("2. Reset Database")
+        if st.button("🗑️ Clear All Accounts"):
+            with engine.connect() as conn:
+                conn.execute(text("TRUNCATE TABLE chart_of_accounts RESTART IDENTITY CASCADE"))
+                conn.commit()
+            st.warning("Chart of Accounts cleared!")
+            st.rerun()
 
-    # --- UPLOAD SECTION ---
-    st.subheader("2. Upload Chart of Accounts")
-    st.info("Ensure your file has a column named **account_name**.")
-    
+    st.divider()
+    st.subheader("3. Upload Chart of Accounts")
     uploaded_file = st.file_uploader("Choose your formatted CSV file", type="csv")
     
     if uploaded_file is not None:
-        import_df = pd.read_csv(uploaded_file)
-        
-        # Data Cleaning: Remove empty rows and duplicates
-        import_df = import_df.dropna(subset=['account_name'])
-        
-        st.write("Preview of data to be imported:")
-        st.dataframe(import_df.head(), use_container_width=True)
-        
+        import_df = pd.read_csv(uploaded_file).dropna(subset=['account_name'])
+        st.write("Preview:", import_df.head())
         if st.button("🚀 Push to Database"):
             try:
-                # We use a 'try' block because the 'account_name' must be UNIQUE in SQL
                 import_df.to_sql('chart_of_accounts', engine, if_exists='append', index=False)
-                st.success(f"Successfully imported {len(import_df)} new accounts!")
+                st.success(f"Imported {len(import_df)} accounts!")
                 st.rerun()
             except Exception as e:
-                st.error("Error: It looks like some of these accounts already exist in the database.")
+                st.error(f"Import failed. Hint: Check for duplicate names.")
 
+# --- MODULE: ENTRY MODULE ---
 elif menu == "Entry Module":
     st.title("⚖️ New Transaction")
     
     if not account_list:
-        st.warning("⚠️ No accounts found! Go to 'Settings' to import your Chart of Accounts first.")
+        st.warning("⚠️ Please import your Chart of Accounts first.")
         st.stop()
 
-    v_type = st.selectbox("Type", ["Payment Voucher", "Cash Receipt", "Sales Entry", "Journal Entry"])
+    v_type = st.selectbox("Transaction Type", ["Payment Voucher", "Cash Receipt", "Sales Entry", "Journal Entry"])
+    v_no = get_next_v(v_type)
     
+    st.subheader(f"Document No: {v_no}")
+
     with st.form("entry_form", clear_on_submit=True):
         c1, c2 = st.columns(2)
         date = c1.date_input("Date", datetime.now())
@@ -96,28 +117,42 @@ elif menu == "Entry Module":
         desc = c2.text_area("Description")
 
         st.markdown("---")
-        # SEARCHABLE SELECT BOXES
-        dr_acc = st.selectbox("Debit Account", options=account_list, index=None, placeholder="Search accounts...")
+        dr_acc = st.selectbox("Debit Account", options=account_list, index=None, placeholder="Search...")
         dr_amt = st.number_input("Debit Amount", min_value=0.0, format="%.2f")
         
-        cr_acc = st.selectbox("Credit Account", options=account_list, index=None, placeholder="Search accounts...")
+        cr_acc = st.selectbox("Credit Account", options=account_list, index=None, placeholder="Search...")
         cr_amt = st.number_input("Credit Amount", min_value=0.0, format="%.2f")
 
         if st.form_submit_button("Post Entry"):
             if dr_amt == cr_amt and dr_amt > 0 and dr_acc and cr_acc:
-                # (Same logic as before to create new_entries DataFrame)
                 new_entries = pd.DataFrame([
-                    {'voucher_no': 'AUTO', 'tr_type': v_type, 'tr_date': date, 'party': party, 'ref_no': ref, 'description': desc, 'account_name': dr_acc, 'debit': dr_amt, 'credit': 0.0},
-                    {'voucher_no': 'AUTO', 'tr_type': v_type, 'tr_date': date, 'party': party, 'ref_no': ref, 'description': desc, 'account_name': cr_acc, 'debit': 0.0, 'credit': cr_amt}
+                    {'voucher_no': v_no, 'tr_type': v_type, 'tr_date': date, 'party': party, 'ref_no': ref, 'description': desc, 'account_name': dr_acc, 'debit': dr_amt, 'credit': 0.0},
+                    {'voucher_no': v_no, 'tr_type': v_type, 'tr_date': date, 'party': party, 'ref_no': ref, 'description': desc, 'account_name': cr_acc, 'debit': 0.0, 'credit': cr_amt}
                 ])
                 new_entries.to_sql('general_ledger', engine, if_exists='append', index=False)
-                st.success("Entry Posted!")
+                st.success(f"Posted {v_no}!")
                 st.rerun()
             else:
-                st.error("Check balance and ensure accounts are selected.")
+                st.error("Check balance (DR must equal CR) and ensure accounts are selected.")
 
-# (Keep General Ledger and Trial Balance code here...)
-        tb = df.groupby('account_name')[['debit', 'credit']].sum()
-        st.table(tb)
+# --- MODULE: GENERAL LEDGER ---
+elif menu == "General Ledger":
+    st.title("📖 General Ledger")
+    if not df.empty:
+        st.dataframe(df, use_container_width=True)
     else:
-        st.warning("No data found.")
+        st.info("The ledger is empty.")
+
+# --- MODULE: TRIAL BALANCE ---
+elif menu == "Trial Balance":
+    st.title("📊 Trial Balance")
+    if not df.empty:
+        tb = df.groupby('account_name')[['debit', 'credit']].sum()
+        tb['Net Balance'] = tb['debit'] - tb['credit']
+        st.dataframe(tb, use_container_width=True)
+        
+        total_dr = tb['debit'].sum()
+        total_cr = tb['credit'].sum()
+        st.metric("Ledger Status", "Balanced" if total_dr == total_cr else "Out of Balance", delta=total_dr-total_cr)
+    else:
+        st.warning("No data found to generate Trial Balance.")
