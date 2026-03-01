@@ -87,22 +87,30 @@ if menu == "Settings / Import":
     
     if uploaded_file is not None:
         try:
-            # Try to read with standard UTF-8 first
+            # Try standard UTF-8
             import_df = pd.read_csv(uploaded_file)
         except UnicodeDecodeError:
-            # If that fails, try 'latin-1' which handles Excel-style special characters better
-            uploaded_file.seek(0) # Reset the file pointer to the start
+            # Fallback for Excel/Latin-1 encoding
+            uploaded_file.seek(0)
             import_df = pd.read_csv(uploaded_file, encoding='latin-1')
         
-        # Data Cleaning: Remove empty rows
+        # Clean data
         import_df = import_df.dropna(subset=['account_name'])
         
         st.write("Preview:", import_df.head())
+        
         if st.button("🚀 Push to Database"):
-            # ... (rest of your existing push code)
+            try:
+                import_df.to_sql('chart_of_accounts', engine, if_exists='append', index=False)
+                st.success(f"Imported {len(import_df)} accounts!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Import failed. Duplicate names might be present.")
 
 # --- MODULE: ENTRY MODULE ---
 elif menu == "Entry Module":
+    # ... (rest of your entry module code)
+
     st.title("⚖️ New Transaction")
     
     if not account_list:
