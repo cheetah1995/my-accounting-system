@@ -141,10 +141,58 @@ account_list = load_accounts()
 # --- 3. NAVIGATION ---
 menu = st.sidebar.radio("Main Menu", ["Entry Module", "General Ledger", "Trial Balance", "Settings / Import"])
 
-# --- MODULE: ENTRY ---
-# --- MODULE: ENTRY ---
+# ... (PDF function and database setup above) ...
+
+# --- MODULE: SETTINGS / IMPORT ---
+if menu == "Settings / Import":
+    st.title("⚙️ Admin Settings")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("1. Download Template")
+        template_data = pd.DataFrame({
+            'account_name': ['Cash in Hand', 'Bank Account', 'Sales Revenue', 'Rent Expense'],
+            'account_type': ['Asset', 'Asset', 'Revenue', 'Expense']
+        })
+        template_csv = template_data.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download CSV Template", data=template_csv, file_name="coa_template.csv", mime="text/csv")
+    
+    with col2:
+        st.subheader("2. Reset Database")
+        if st.button("🗑️ Clear All Accounts"):
+            with engine.connect() as conn:
+                conn.execute(text("TRUNCATE TABLE chart_of_accounts RESTART IDENTITY CASCADE"))
+                conn.commit()
+            st.warning("Chart of Accounts cleared!")
+            st.rerun()
+
+    st.divider()
+    st.subheader("3. Upload Chart of Accounts")
+    uploaded_file = st.file_uploader("Choose your formatted CSV file", type="csv")
+    
+    if uploaded_file is not None:
+        try:
+            import_df = pd.read_csv(uploaded_file)
+        except UnicodeDecodeError:
+            uploaded_file.seek(0)
+            import_df = pd.read_csv(uploaded_file, encoding='latin-1')
+        
+        import_df = import_df.dropna(subset=['account_name'])
+        st.write("Preview:", import_df.head())
+        
+        if st.button("🚀 Push to Database"):
+            try:
+                import_df.to_sql('chart_of_accounts', engine, if_exists='append', index=False)
+                st.success(f"Imported {len(import_df)} accounts!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Import failed. Duplicate names might be present.")
+
+# --- MODULE: ENTRY MODULE ---
 elif menu == "Entry Module":
     st.title("⚖️ Multi-Row Transaction Entry")
+    # ... rest of your entry module code ...
     if not account_list:
         st.warning("Please import Chart of Accounts first.")
         st.stop()
