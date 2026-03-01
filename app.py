@@ -6,6 +6,26 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 import io
 from PyPDF2 import PdfWriter, PdfReader
+# --- SIMPLE LOGIN SYSTEM ---
+def check_password():
+    def password_entered():
+        if st.session_state["password"] == "Tharushi@951": # Change this to your secret password
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        st.text_input("Enter Password to Access Ethical Teas ERP", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        st.text_input("Password Incorrect. Try again.", type="password", on_change=password_entered, key="password")
+        return False
+    else:
+        return True
+
+if not check_password():
+    st.stop() # Stops the rest of the app from running until login
 
 # --- 1. PDF GENERATOR ENGINE (RESTORED BRANDING & MULTI-ROW) ---
 def generate_voucher_pdf(v_no, v_type, date, party, ref, desc, entries_list):
