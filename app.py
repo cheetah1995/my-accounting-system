@@ -1,50 +1,74 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 
-st.set_page_config(page_title="Professional Ledger", layout="wide")
+st.set_page_config(page_title="Pro Ledger: Voucher Edition", layout="wide")
 
-# 1. SETUP DATA STORAGE
+# 1. DATABASE INITIALIZATION
 if 'ledger' not in st.session_state:
-    st.session_state.ledger = pd.DataFrame(columns=['Date', 'Description', 'Account', 'Debit', 'Credit'])
+    st.session_state.ledger = pd.DataFrame(columns=[
+        'Voucher_No', 'Date', 'Payee', 'Ref_No', 'Description', 'Account', 'Debit', 'Credit'
+    ])
 
-# 2. THE ACCOUNTANT'S FORM
-st.sidebar.title("Navigation")
-page = st.sidebar.radio("Menu", ["Entry Form", "Trial Balance", "General Ledger"])
+# 2. AUTO-GENERATION LOGIC
+def get_next_voucher():
+    if len(st.session_state.ledger) == 0:
+        return "PV-001"
+    # Get the last Voucher number and increment it
+    last_val = st.session_state.ledger['Voucher_No'].iloc[-1]
+    last_num = int(last_val.split("-")[1])
+    return f"PV-{last_num + 1:03d}"
 
-if page == "Entry Form":
-    st.title("⚖️ Balanced Journal Entry")
-    with st.form("entry"):
-        date = st.date_input("Date")
-        desc = st.text_input("Description")
+# NAVIGATION
+menu = st.sidebar.radio("Navigation", ["Payment Voucher", "View Ledger"])
+
+if menu == "Payment Voucher":
+    st.title("💸 Payment Voucher Entry")
+    
+    # Auto-generate number
+    v_no = get_next_voucher()
+    st.subheader(f"Voucher Number: {v_no}")
+
+    with st.form("pv_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            date = st.date_input("Date", datetime.now())
+            payee = st.text_input("Bearer of Cheque / Payee")
+            ref_no = st.text_input("Reference / Cheque Number")
         
-        c1, c2 = st.columns(2)
-        with c1:
-            dr_acc = st.text_input("Debit Account (e.g., Cash)")
-            dr_amt = st.number_input("Debit Amount", min_value=0.0)
-        with c2:
-            cr_acc = st.text_input("Credit Account (e.g., Revenue)")
-            cr_amt = st.number_input("Credit Amount", min_value=0.0)
-            
-        if st.form_submit_button("Post to Books"):
+        with col2:
+            description = st.text_area("Description / Narration")
+
+        st.divider()
+        st.markdown("### Double Entry Posting")
+        row1_col1, row1_col2, row1_col3 = st.columns([2, 1, 1])
+        
+        # Line 1: Usually the Expense (Debit)
+        dr_acc = row1_col1.text_input("Debit Account (e.g., Rent Expense)")
+        dr_amt = row1_col2.number_input("Debit Amount", min_value=0.0, step=0.01)
+        
+        # Line 2: Usually the Bank/Cash (Credit)
+        cr_acc = row1_col1.text_input("Credit Account (e.g., Bank Account)")
+        cr_amt = row1_col3.number_input("Credit Amount", min_value=0.0, step=0.01)
+
+        submit = st.form_submit_button("Generate & Post Voucher")
+
+        if submit:
             if dr_amt != cr_amt:
-                st.error(f"Does not balance! Difference: {abs(dr_amt-cr_amt)}")
+                st.error(f"Voucher Unbalanced! Difference: {abs(dr_amt-cr_amt)}")
             elif dr_amt == 0:
-                st.error("Amount must be > 0")
+                st.error("Amount must be greater than zero.")
             else:
-                new_data = pd.DataFrame([
-                    {'Date': date, 'Description': desc, 'Account': dr_acc, 'Debit': dr_amt, 'Credit': 0.0},
-                    {'Date': date, 'Description': desc, 'Account': cr_acc, 'Debit': 0.0, 'Credit': cr_amt}
+                # Add two rows for the double entry
+                new_entries = pd.DataFrame([
+                    {'Voucher_No': v_no, 'Date': date, 'Payee': payee, 'Ref_No': ref_no, 
+                     'Description': description, 'Account': dr_acc, 'Debit': dr_amt, 'Credit': 0.0},
+                    {'Voucher_No': v_no, 'Date': date, 'Payee': payee, 'Ref_No': ref_no, 
+                     'Description': description, 'Account': cr_acc, 'Debit': 0.0, 'Credit': cr_amt}
                 ])
-                st.session_state.ledger = pd.concat([st.session_state.ledger, new_data], ignore_index=True)
-                st.success("Balanced Entry Posted!")
+                st.session_state.ledger = pd.concat([st.session_state.ledger, new_entries], ignore_index=True)
+                st.success(f"Voucher {v_no} posted successfully!")
 
-elif page == "Trial Balance":
-    st.title("📊 Trial Balance")
-    tb = st.session_state.ledger.groupby('Account')[['Debit', 'Credit']].sum()
-    st.table(tb)
-    st.metric("Total Debits", f"${st.session_state.ledger.Debit.sum():,.2f}")
-    st.metric("Total Credits", f"${st.session_state.ledger.Credit.sum():,.2f}")
-
-else:
-    st.title("📖 General Ledger")
-    st.dataframe(st.session_state.ledger)
+elif menu == "View Ledger":
+    st.title("📖 General Ledger & Voucher History")
+    st.dataframe(st.session_state.ledger, use_container_width=True)
