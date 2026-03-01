@@ -799,3 +799,18 @@ elif menu == "Payroll Management":
                 st.rerun()
             except Exception as e:
                 st.error(f"Post Failed: {e}")
+# --- TEMPORARY DATABASE MIGRATION TOOL ---
+if menu == "Settings / Import": # Put it inside your Settings menu
+    st.divider()
+    if st.button("🛠️ Upgrade Database to Commercial Grade"):
+        try:
+            with engine.connect() as conn:
+                # SQLite commands to add columns
+                conn.execute(text("ALTER TABLE general_ledger ADD COLUMN created_by TEXT DEFAULT 'Admin';"))
+                conn.execute(text("ALTER TABLE general_ledger ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP;"))
+                conn.execute(text("ALTER TABLE general_ledger ADD COLUMN is_void INTEGER DEFAULT 0;"))
+                conn.execute(text("ALTER TABLE general_ledger ADD COLUMN void_reason TEXT;"))
+                conn.commit()
+            st.success("Database Schema Updated! You can now remove this code block.")
+        except Exception as e:
+            st.info(f"Note: Some columns might already exist. Error: {e}")
