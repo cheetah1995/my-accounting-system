@@ -20,9 +20,9 @@ def generate_voucher_pdf(v_no, v_type, date, party, ref, desc, dr_acc, dr_amt, c
     c.setFillColorRGB(0.3, 0.3, 0.3)  # Grey for address
     c.drawString(50, height - 65, "153/B, Hulangamuwa Road")
     c.drawString(50, height - 75, "Matale, Sri Lanka | Tel: +9466 313 8467")
-    c.drawString(50, height - 85, "Email: accounts@yourcompany.com")
+    c.drawString(50, height - 85, "Email: info@ethicteas.com")
     
-    # Simple Graphic Logo (A blue square with 'C' for Company)
+    # Simple Graphic Logo (A blue square with 'E' for Company)
     c.rect(480, height - 85, 50, 50, fill=1)
     c.setFillColorRGB(1, 1, 1) # White text
     c.setFont("Helvetica-Bold", 30)
