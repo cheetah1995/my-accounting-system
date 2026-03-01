@@ -197,12 +197,33 @@ if menu == "Entry Module":
             except Exception as e: st.error(f"SQL Error: {e}")
         else: st.error("Out of balance or empty transaction.")
 
-    # Show PDF button after posting
-    if 'last_post' in st.session_state:
+        # Show PDF button after posting
+    if 'last_post' in st.session_state and st.session_state['last_post'] is not None:
         lp = st.session_state['last_post']
-        pdf_file = generate_voucher_pdf(*lp['meta'], lp['lines'])
-        st.download_button("🖨️ Download Voucher PDF", pdf_file, f"Voucher_{lp['meta'][0]}.pdf", "application/pdf", use_container_width=True)
-
+        
+        # Safety check: Ensure 'meta' and 'lines' exist in the dictionary
+        if 'meta' in lp and 'lines' in lp:
+            pdf_file = generate_voucher_pdf(
+                v_no=lp['meta'][0],
+                v_type=lp['meta'][1],
+                date=lp['meta'][2],
+                party=lp['meta'][3],
+                ref=lp['meta'][4],
+                desc=lp['meta'][5],
+                entries_list=lp['lines']
+            )
+            
+            st.download_button(
+                label=f"🖨️ Download Voucher {lp['meta'][0]}",
+                data=pdf_file,
+                file_name=f"Voucher_{lp['meta'][0]}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+            
+            if st.button("Clear and Start New Entry"):
+                st.session_state['last_post'] = None
+                st.rerun()
 # --- MODULE: GENERAL LEDGER ---
 elif menu == "General Ledger":
     st.title("📖 General Ledger Archive")
