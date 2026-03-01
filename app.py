@@ -454,7 +454,18 @@ elif menu == "Settings / Import":
                 conn.execute(text("TRUNCATE TABLE chart_of_accounts RESTART IDENTITY CASCADE"))
                 conn.commit()
             st.rerun()
+ if st.button("🛠️ Upgrade Database for Multi-Currency"):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE general_ledger ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'LKR'"))
+                conn.execute(text("ALTER TABLE general_ledger ADD COLUMN IF NOT EXISTS exchange_rate NUMERIC DEFAULT 1.0"))
+                conn.execute(text("ALTER TABLE general_ledger ADD COLUMN IF NOT EXISTS base_amount NUMERIC DEFAULT 0.0"))
+                conn.commit()
+            st.success("✅ Database upgraded! You can now track USD and EUR transactions.")
+        except Exception as e:
+            st.error(f"Update Error: {e}")
 
+    # ... rest of your settings code ...
     st.subheader("Import Chart of Accounts")
     up_file = st.file_uploader("Upload CSV", type="csv")
     if up_file:
