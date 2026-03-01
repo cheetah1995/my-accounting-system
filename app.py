@@ -562,3 +562,53 @@ elif menu == "Balance Sheet":
 
     except Exception as e:
         st.error(f"Error: {e}")
+# --- MODULE: ACCOUNT STATEMENT ---
+elif menu == "Account Statement":
+    st.title("🔍 Account Statement (Drill-down)")
+    
+    c1, c2 = st.columns([2, 1])
+    target_account = c1.selectbox("Select Account to Analyze", options=account_list)
+    
+    # 1. Date Range for the Statement
+    s_date = c2.date_input("Start Date", value=datetime(datetime.now().year, 1, 1))
+    e_date = c2.date_input("End Date", value=datetime.now())
+
+    try:
+        # Load all transactions for this specific account
+        query = text("SELECT * FROM general_ledger WHERE account_name = :acc ORDER BY tr_date ASC, id ASC")
+        acc_df = pd.read_sql(query, engine, params={"acc": target_account})
+        acc_df['tr_date'] = pd.to_datetime(acc_df['tr_date']).dt.date
+        
+        # Calculate Opening Balance (Everything before s_date)
+        op_bal_df = acc_df[acc_df['tr_date'] < s_date]
+        opening_balance = op_bal_df['debit'].sum() - op_bal_df['credit'].sum()
+        
+        # Filter Current Period
+        current_df = acc_df[(acc_df['tr_date'] >= s_date) & (acc_df['tr_date'] <= e_date)].copy()
+        
+        if current_df.empty and opening_balance == 0:
+            st.info(f"No transactions found for {target_account} in this period.")
+        else:
+            # 2. Calculate Running Balance
+            # Start with opening balance
+            current_df['Net'] = current_df['debit'] - current_df['credit']
+            current_df['Running Balance'] = opening_balance + current_df['Net'].cumsum()
+            
+            # --- DISPLAY SUMMARY ---
+            st.divider()
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Opening Balance", f"{opening_balance:,.2f}")
+            m2.metric("Period Movement", f"{(current_df['debit'].sum() - current_df['credit'].sum()):,.2f}")
+            m3.metric("Closing Balance", f"{current_df['Running Balance'].iloc[-1] if not current_df.empty else opening_balance:,.2f}")
+
+            # --- DETAILED TABLE ---
+            st.subheader(f"Statement for: {target_account}")
+            display_cols = ['tr_date', 'voucher_no', 'party', 'description', 'debit', 'credit', 'Running Balance']
+            st.dataframe(current_df[display_cols], use_container_width=True, hide_index=True)
+
+            # 3. EXPORT
+            csv = current_df[display_cols].to_csv(index=False).encode('utf-8')
+            st.download_button(f"📥 Export {target_account} Statement", csv, f"Statement_{target_account}.csv", "text/csv")
+
+    except Exception as e:
+        st.error(f"Error generating statement: {e}")
