@@ -343,7 +343,44 @@ elif menu == "Entry Module":
             st.session_state['last_post'] = None
             st.rerun()
 # --- MODULE: GENERAL LEDGER ---
-# --- MODULE: GENERAL LEDGER ---
+# --- INSIDE GENERAL LEDGER MODULE ---
+elif menu == "General Ledger":
+    st.title("📖 General Ledger & Audit")
+
+    # Fetch data including our new columns
+    query = "SELECT * FROM general_ledger ORDER BY tr_date DESC, voucher_no DESC"
+    df_ledger = pd.read_sql(query, engine)
+
+    # Filter out voided transactions for the main view (Optional)
+    show_voided = st.checkbox("Show Voided Transactions")
+    if not show_voided:
+        display_df = df_ledger[df_ledger['is_void'] == 0]
+    else:
+        display_df = df_ledger
+
+    st.dataframe(display_df, use_container_width=True)
+
+    # --- THE VOID LOGIC ---
+    st.divider()
+    st.subheader("🛠️ Transaction Actions")
+    
+    # Let user pick a voucher to void
+    vouchers = display_df['voucher_no'].unique()
+    selected_v = st.selectbox("Select Voucher to Void", options=vouchers)
+    reason = st.text_input("Reason for Voiding", placeholder="e.g., Duplicate entry / Wrong amount")
+
+    if st.button("🚫 Void Transaction", type="secondary"):
+        if selected_v:
+            try:
+                with engine.connect() as conn:
+                    # Update the record to is_void = 1
+                    sql = text("UPDATE general_ledger SET is_void = 1, void_reason = :res WHERE voucher_no = :vouch")
+                    conn.execute(sql, {"res": reason, "vouch": selected_v})
+                    conn.commit()
+                st.warning(f"Voucher {selected_v} has been successfully voided.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Voiding failed: {e}")
 elif menu == "General Ledger":
     st.title("📖 General Ledger Archive")
     
