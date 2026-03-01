@@ -268,29 +268,22 @@ elif menu == "Entry Module":
             for _, r in lines_df.iterrows():
                 if (r['debit'] > 0 or r['credit'] > 0) and r['account'] is not None:
                     final_entries.append({
-    "tr_date": tr_date,
-    "tr_type": tr_type,
-    "voucher_no": v_no,
-    "party": party,
-    "description": description,
-    "account_name": acc_name,
-    "debit": debit_val,
-    "credit": credit_val,
-    # --- ADD THESE NOW ---
-    "created_by": st.session_state.get('username', 'Admin'), 
-    "created_at": datetime.now(),
-    "is_void": 0
-})
+                        "tr_date": date,
+                        "tr_type": v_type,
+                        "voucher_no": v_no,
+                        "party": party,
+                        "description": r['description'] if r['description'] else desc,
+                        "account_name": r['account'],
+                        "debit": r['debit'],
+                        "credit": r['credit'],
+                        "created_by": "Admin", 
+                        "created_at": datetime.now(),
+                        "is_void": 0
+                    })
             
             try:
                 pd.DataFrame(final_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
-                
-                # Save PDF data BEFORE we clear the screen
-                st.session_state['last_post'] = {
-                    'v_no': v_no, 'v_type': v_type, 'date': date, 
-                    'party': party, 'ref': ref, 'desc': desc, 
-                    'lines': final_entries
-                }
+                st.session_state['last_post'] = {'v_no': v_no, 'v_type': v_type, 'date': date, 'party': party, 'ref': ref, 'desc': desc, 'lines': final_entries}
                 st.success(f"Successfully Posted {v_no}!")
                 st.rerun()
             except Exception as e:
@@ -525,9 +518,13 @@ elif menu == "Profit & Loss":
     except Exception as e:
         st.error(f"Error generating report: {e}. Ensure your Chart of Accounts has 'account_type' defined as Revenue or Expense.")
 # --- UPDATE ALL REPORT QUERIES ---
-# Instead of: SELECT * FROM general_ledger
-# Use:
-query = "SELECT * FROM general_ledger WHERE is_void = 0"
+# Change the query inside the P&L block to this:
+query = """
+    SELECT gl.*, coa.account_type 
+    FROM general_ledger gl
+    LEFT JOIN chart_of_accounts coa ON gl.account_name = coa.account_name
+    WHERE gl.is_void = 0
+"""
 
 # --- MODULE: BALANCE SHEET (FIXED VERSION) ---
 elif menu == "Balance Sheet":
