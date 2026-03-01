@@ -207,7 +207,23 @@ if menu == "Settings / Import":
                 st.rerun()
             except Exception as e:
                 st.error(f"Import failed. Duplicate names might be present.")
+st.divider()
+st.subheader("💾 System Backup")
+st.write("Download a full copy of your General Ledger for safekeeping.")
 
+if st.button("📦 Generate Full Backup"):
+    try:
+        backup_df = pd.read_sql("SELECT * FROM general_ledger", engine)
+        csv_backup = backup_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="⬇️ Download Backup (CSV)",
+            data=csv_backup,
+            file_name=f"EthicalTeas_Backup_{datetime.now().strftime('%Y-%m-%d')}.csv",
+            mime="text/csv"
+        )
+        st.success("Backup ready! Keep this file on an external drive.")
+    except Exception as e:
+        st.error(f"Backup failed: {e}")
 # --- MODULE: ENTRY MODULE ---
 elif menu == "Entry Module":
     st.title("⚖️ Multi-Row Transaction Entry")
