@@ -189,13 +189,20 @@ if menu == "Entry Module":
                         'ref_no': ref, 'description': r['description'] if r['description'] else desc,
                         'account_name': r['account'], 'debit': r['debit'], 'credit': r['credit']
                     })
-            try:
+                           try:
+                # 1. Save to Database
                 pd.DataFrame(final_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
-                st.session_state['last_post'] = {'meta': (v_no, v_type, date, party, ref, desc), 'lines': final_entries}
+                
+                # 2. Save to Session State (Make sure this matches the names above!)
+                st.session_state['last_post'] = {
+                    'meta': (v_no, v_type, date, party, ref, desc), 
+                    'lines': final_entries
+                }
+                
                 st.success(f"Voucher {v_no} Posted Successfully!")
-                st.rerun()
-            except Exception as e: st.error(f"SQL Error: {e}")
-        else: st.error("Out of balance or empty transaction.")
+                st.rerun() # 3. Refresh to show the download button
+            except Exception as e: 
+                st.error(f"SQL Error: {e}")
 
         # Show PDF button after posting
     if 'last_post' in st.session_state and st.session_state['last_post'] is not None:
