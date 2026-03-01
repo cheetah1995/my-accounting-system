@@ -47,12 +47,11 @@ def get_next_v(prefix):
 st.sidebar.title("ERP Modules")
 menu = st.sidebar.radio("Go to", ["Entry Module", "General Ledger", "Trial Balance"])
 
+# --- MAIN LOGIC FLOW ---
 if menu == "Entry Module":
     st.title("⚖️ Double-Entry Posting")
-    
     v_type = st.selectbox("Transaction Type", ["Payment Voucher", "Cash Receipt", "Sales Entry", "Journal Entry"])
     
-    # Map prefixes
     prefix_map = {"Payment Voucher": "PV", "Cash Receipt": "CR", "Sales Entry": "SJ", "Journal Entry": "JV"}
     prefix = prefix_map[v_type]
     v_no = get_next_v(prefix)
@@ -69,8 +68,6 @@ if menu == "Entry Module":
             desc = st.text_area("Narration")
 
         st.markdown("---")
-        
-        # Row for Debit/Credit Entry
         col_acc, col_dr, col_cr = st.columns([2, 1, 1])
         
         dr_acc = col_acc.text_input("Debit Account")
@@ -85,56 +82,30 @@ if menu == "Entry Module":
             if dr_amt != cr_amt or dr_amt == 0:
                 st.error(f"Entry does not balance! Difference: {abs(dr_amt-cr_amt)}")
             else:
-                # Prepare data for SQL
-                # Note: Column names must match your SQL table exactly
                 new_entries = pd.DataFrame([
                     {'voucher_no': v_no, 'tr_type': v_type, 'tr_date': date, 'party': party, 'ref_no': ref, 
                      'description': desc, 'account_name': dr_acc, 'debit': dr_amt, 'credit': 0.0},
                     {'voucher_no': v_no, 'tr_type': v_type, 'tr_date': date, 'party': party, 'ref_no': ref, 
                      'description': desc, 'account_name': cr_acc, 'debit': 0.0, 'credit': cr_amt}
                 ])
-                
-                # Push to SQL
                 try:
                     new_entries.to_sql('general_ledger', engine, if_exists='append', index=False)
                     st.success(f"Successfully Posted {v_no}!")
-                    st.balloons()
-                    st.rerun() # Refresh to update the voucher number
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Database Error: {e}")
 
 elif menu == "General Ledger":
-    elif menu == "General Ledger":
     st.title("📖 General Ledger")
     if not df.empty:
-        # We use a filter here so you can search for specific accounts
-        search = st.text_input("Search by Account or Voucher Number")
-        if search:
-            display_df = df[df.apply(lambda row: search.lower() in str(row).lower(), axis=1)]
-        else:
-            display_df = df
-        st.dataframe(display_df, use_container_width=True)
+        st.dataframe(df, use_container_width=True)
     else:
-        st.info("The ledger is currently empty. Post a transaction to see it here!")
+        st.info("The ledger is empty.")
 
 elif menu == "Trial Balance":
     st.title("📊 Trial Balance")
     if not df.empty:
-        # Grouping data to show account totals
         tb = df.groupby('account_name')[['debit', 'credit']].sum()
-        tb['Balance'] = tb['debit'] - tb['credit']
         st.table(tb)
-        
-        total_dr = df['debit'].sum()
-        total_cr = df['credit'].sum()
-        
-        c1, c2 = st.columns(2)
-        c1.metric("Total Debits", f"${total_dr:,.2f}")
-        c2.metric("Total Credits", f"${total_cr:,.2f}")
-        
-        if total_dr == total_cr:
-            st.success("Ledger is Balanced ✅")
-        else:
-            st.error(f"Ledger is Out of Balance by ${abs(total_dr - total_cr):,.2f} ❌")
     else:
-        st.warning("No data available to generate a Trial Balance.")
+        st.warning("No data found.")
