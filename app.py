@@ -86,15 +86,20 @@ if menu == "Settings / Import":
     uploaded_file = st.file_uploader("Choose your formatted CSV file", type="csv")
     
     if uploaded_file is not None:
-        import_df = pd.read_csv(uploaded_file).dropna(subset=['account_name'])
+        try:
+            # Try to read with standard UTF-8 first
+            import_df = pd.read_csv(uploaded_file)
+        except UnicodeDecodeError:
+            # If that fails, try 'latin-1' which handles Excel-style special characters better
+            uploaded_file.seek(0) # Reset the file pointer to the start
+            import_df = pd.read_csv(uploaded_file, encoding='latin-1')
+        
+        # Data Cleaning: Remove empty rows
+        import_df = import_df.dropna(subset=['account_name'])
+        
         st.write("Preview:", import_df.head())
         if st.button("🚀 Push to Database"):
-            try:
-                import_df.to_sql('chart_of_accounts', engine, if_exists='append', index=False)
-                st.success(f"Imported {len(import_df)} accounts!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Import failed. Hint: Check for duplicate names.")
+            # ... (rest of your existing push code)
 
 # --- MODULE: ENTRY MODULE ---
 elif menu == "Entry Module":
