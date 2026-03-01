@@ -174,7 +174,7 @@ if st.session_state["role"] == "Owner":
     ]
 else:
     # Staff only sees operational tools
-    menu_options = ["Entry Module", "General Ledger","Account Statement",, "Trial Balance"]
+    menu_options = ["Entry Module", "General Ledger","Account Statement", "Trial Balance"]
 
 menu = st.sidebar.radio("Main Menu", menu_options)
 
