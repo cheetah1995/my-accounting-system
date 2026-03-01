@@ -191,11 +191,26 @@ elif menu == "Entry Module":
                     {'voucher_no': v_no, 'tr_type': v_type, 'tr_date': date, 'party': party, 'ref_no': ref, 'description': desc, 'account_name': dr_acc, 'debit': dr_amt, 'credit': 0.0},
                     {'voucher_no': v_no, 'tr_type': v_type, 'tr_date': date, 'party': party, 'ref_no': ref, 'description': desc, 'account_name': cr_acc, 'debit': 0.0, 'credit': cr_amt}
                 ])
-                new_entries.to_sql('general_ledger', engine, if_exists='append', index=False)
-                st.success(f"Posted {v_no}!")
-                st.rerun()
+                
+                try:
+                    new_entries.to_sql('general_ledger', engine, if_exists='append', index=False)
+                    st.success(f"Successfully Posted {v_no}!")
+                    
+                    # GENERATE PDF FOR DOWNLOAD
+                    pdf_data = generate_voucher_pdf(v_no, v_type, date, party, ref, desc, dr_acc, dr_amt, cr_acc, cr_amt)
+                    
+                    st.download_button(
+                        label="🖨️ Download Voucher PDF",
+                        data=pdf_data,
+                        file_name=f"Voucher_{v_no}.pdf",
+                        mime="application/pdf"
+                    )
+                    
+                    # Note: We remove st.rerun() here so the button stays visible long enough for you to click it!
+                except Exception as e:
+                    st.error(f"Database Error: {e}")
             else:
-                st.error("Check balance (DR must equal CR) and ensure accounts are selected.")
+                st.error("Error: Check balance and accounts.")
 
 # --- MODULE: GENERAL LEDGER ---
 elif menu == "General Ledger":
