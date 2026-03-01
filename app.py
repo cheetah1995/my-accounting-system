@@ -168,13 +168,13 @@ account_list = load_accounts()
 if st.session_state["role"] == "Owner":
     # Owner sees everything
     menu_options = [
-        "Dashboard", "Entry Module", "Payroll Management", 
+        "Dashboard", "Invoicing", "Entry Module", "Payroll Management", 
         "General Ledger", "Trial Balance", "Profit & Loss", 
         "Balance Sheet", "Account Statement", "Settings / Import"
     ]
 else:
     # Staff only sees operational tools
-    menu_options = ["Entry Module", "General Ledger","Account Statement", "Trial Balance"]
+    menu_options = ["Entry Module", "Invoicing", "General Ledger","Account Statement", "Trial Balance"]
 
 menu = st.sidebar.radio("Main Menu", menu_options)
 
