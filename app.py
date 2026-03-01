@@ -14,12 +14,12 @@ def generate_voucher_pdf(v_no, v_type, date, party, ref, desc, dr_acc, dr_amt, c
     # --- COMPANY BRANDING ---
     c.setFont("Helvetica-Bold", 20)
     c.setFillColorRGB(0.1, 0.2, 0.5)  # Dark Blue color for the logo/name
-    c.drawString(50, height - 50, "YOUR COMPANY NAME LTD.")
+    c.drawString(50, height - 50, "ETHICAL TEAS PRIVATE LTD.")
     
     c.setFont("Helvetica", 9)
     c.setFillColorRGB(0.3, 0.3, 0.3)  # Grey for address
-    c.drawString(50, height - 65, "123 Business Avenue, Financial District")
-    c.drawString(50, height - 75, "City, Country | Tel: +123 456 789")
+    c.drawString(50, height - 65, "153/B, Hulangamuwa Road")
+    c.drawString(50, height - 75, "Matale, Sri Lanka | Tel: +9466 313 8467")
     c.drawString(50, height - 85, "Email: accounts@yourcompany.com")
     
     # Simple Graphic Logo (A blue square with 'C' for Company)
