@@ -894,3 +894,44 @@ elif menu == "Invoicing":
             ]
             pd.DataFrame(invoice_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
             st.success(f"Invoice Posted! {selected_buyer} now has a receivable balance of {total_val}.")
+# --- MODULE: CURRENCY TRANSFERS & PAYMENTS ---
+elif menu == "Currency Transfers":
+    st.title("💱 Multi-Currency FX Handler")
+    
+    col1, col2, col3 = st.columns(3)
+    from_acc = col1.selectbox("From Account (Source)", options=account_list)
+    to_acc = col2.selectbox("To Account (Destination)", options=account_list)
+    tr_date = col3.date_input("Transfer Date")
+
+    c1, c2, c3 = st.columns(3)
+    source_currency = c1.selectbox("Source Currency", ["USD", "EUR", "LKR"])
+    amount_fx = c2.number_input(f"Amount in {source_currency}", min_value=0.0)
+    ex_rate = c3.number_input("Exchange Rate (1 FX = ? LKR)", min_value=1.0, value=300.0 if source_currency != "LKR" else 1.0)
+
+    lkr_equivalent = amount_fx * ex_rate
+    st.metric("LKR Equivalent", f"Rs. {lkr_equivalent:,.2f}")
+
+    if st.button("🚀 Execute Transfer", use_container_width=True):
+        if amount_fx > 0 and from_acc != to_acc:
+            # 1. Money leaves the Source Account
+            # 2. Money enters the Destination Account
+            transfer_entries = [
+                {
+                    'voucher_no': f"FX-{datetime.now().strftime('%m%d%H%M')}",
+                    'tr_type': 'FX Transfer', 'tr_date': tr_date,
+                    'party': 'Internal Transfer', 'description': f"Transfer {amount_fx} {source_currency} @ {ex_rate}",
+                    'account_name': from_acc, 'debit': 0, 'credit': lkr_equivalent,
+                    'currency': source_currency, 'exchange_rate': ex_rate, 'base_amount': amount_fx,
+                    'is_void': 0, 'created_by': st.session_state.get("username", "Admin")
+                },
+                {
+                    'voucher_no': f"FX-{datetime.now().strftime('%m%d%H%M')}",
+                    'tr_type': 'FX Transfer', 'tr_date': tr_date,
+                    'party': 'Internal Transfer', 'description': f"Transfer {amount_fx} {source_currency} @ {ex_rate}",
+                    'account_name': to_acc, 'debit': lkr_equivalent, 'credit': 0,
+                    'currency': source_currency, 'exchange_rate': ex_rate, 'base_amount': amount_fx,
+                    'is_void': 0, 'created_by': st.session_state.get("username", "Admin")
+                }
+            ]
+            pd.DataFrame(transfer_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
+            st.success(f"Successfully moved {amount_fx} {source_currency} to {to_acc}")
