@@ -825,3 +825,71 @@ elif menu == "Payroll Management":
                 st.rerun()
             except Exception as e:
                 st.error(f"Post Failed: {e}")
+# --- MODULE: ADVANCED INVOICING (Dynamic Mapping) ---
+elif menu == "Invoicing":
+    st.title("📄 Professional Sales Mapping")
+    
+    # 1. Fetch live accounts for the dropdowns
+    try:
+        # Get Asset accounts for the 'Debit' side (Banks, Receivables)
+        asset_accounts = pd.read_sql("SELECT account_name FROM chart_of_accounts WHERE account_type = 'Asset'", engine)['account_name'].tolist()
+        # Get Revenue accounts for the 'Credit' side (Sales, Services)
+        revenue_accounts = pd.read_sql("SELECT account_name FROM chart_of_accounts WHERE account_type = 'Revenue'", engine)['account_name'].tolist()
+    except:
+        st.error("Could not load accounts. Please check your Chart of Accounts.")
+        st.stop()
+
+    # 2. Invoice Details
+    c1, c2, c3 = st.columns(3)
+    inv_no = c1.text_input("Invoice #", value=f"INV-{datetime.now().strftime('%m%d%H%M')}")
+    inv_date = c2.date_input("Date", value=datetime.now())
+    currency = c3.selectbox("Currency Label", ["LKR", "USD", "EUR"])
+    
+    buyer = st.text_input("Customer/Buyer Name", placeholder="e.g., London Tea Brokers")
+
+    # 3. DYNAMIC MAPPING (This is what you asked for)
+    st.info("🎯 **Account Mapping:** Choose where this money goes in your books.")
+    map_col1, map_col2 = st.columns(2)
+    
+    with map_col1:
+        # Here you choose if it's a Credit Sale (Receivable) or Cash Sale (Bank)
+        debit_target = st.selectbox("Debit Account (Where is the money/debt?)", options=asset_accounts, help="Select 'Accounts Receivable' for credit or a 'Bank' for cash.")
+    
+    with map_col2:
+        # Here you choose the Revenue category
+        credit_target = st.selectbox("Credit Account (What type of sale?)", options=revenue_accounts)
+
+    # 4. Amounts
+    st.divider()
+    p1, p2 = st.columns(2)
+    item_desc = p1.text_input("Description", "Bulk Tea Export")
+    total_val = p2.number_input(f"Total Invoice Value ({currency})", min_value=0.0)
+
+    # 5. POSTING LOGIC
+    if st.button("🚀 Issue & Post to Ledger", use_container_width=True):
+        if total_val > 0 and debit_target and credit_target:
+            try:
+                invoice_entries = [
+                    {
+                        'voucher_no': inv_no, 'tr_type': 'Sales', 'tr_date': inv_date,
+                        'party': buyer, 'ref_no': f"Currency: {currency}", 'description': item_desc,
+                        'account_name': credit_target, 'debit': 0, 'credit': total_val,
+                        'created_by': st.session_state.get("username", "Admin"),
+                        'created_at': datetime.now(), 'is_void': 0
+                    },
+                    {
+                        'voucher_no': inv_no, 'tr_type': 'Sales', 'tr_date': inv_date,
+                        'party': buyer, 'ref_no': f"Currency: {currency}", 'description': item_desc,
+                        'account_name': debit_target, 'debit': total_val, 'credit': 0,
+                        'created_by': st.session_state.get("username", "Admin"),
+                        'created_at': datetime.now(), 'is_void': 0
+                    }
+                ]
+                
+                pd.DataFrame(invoice_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
+                st.success(f"Successfully posted! Debited: {debit_target} | Credited: {credit_target}")
+                st.balloons()
+            except Exception as e:
+                st.error(f"Error: {e}")
+        else:
+            st.warning("Please ensure amounts are entered and accounts are selected.")
