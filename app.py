@@ -468,6 +468,7 @@ with engine.connect() as conn:
     conn.execute(text("ALTER TABLE general_ledger ADD COLUMN IF NOT EXISTS exchange_rate NUMERIC DEFAULT 1.0"))
     conn.execute(text("ALTER TABLE general_ledger ADD COLUMN IF NOT EXISTS base_amount NUMERIC DEFAULT 0.0"))
     conn.commit()
+
 # --- MODULE: PROFIT & LOSS ---
 elif menu == "Profit & Loss":
     st.title("📈 Income Statement (Profit & Loss)")
