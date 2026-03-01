@@ -522,15 +522,21 @@ elif menu == "Profit & Loss":
 query = """
     SELECT gl.*, coa.account_type 
     FROM general_ledger gl
-    LEFT JOIN chart_of_accounts coa ON gl.account_name = coa.account_name
-    WHERE gl.is_void = 0
-"""
+ # --- EXPORT REPORT ---
+            st.divider()
+            if st.button("📊 Export P&L to CSV"):
+                csv = report_df.to_csv(index=False).encode('utf-8')
+                st.download_button("Download Report", csv, f"PL_Report_{s_date}.csv", "text/csv")
 
-# --- MODULE: BALANCE SHEET (FIXED VERSION) ---
+    except Exception as e:
+        st.error(f"Error generating report: {e}")
+
+# --- MODULE: BALANCE SHEET ---
 elif menu == "Balance Sheet":
     st.title("🏦 Classified Balance Sheet")
+    # The query must be INSIDE this block, indented by 4 spaces
+    query = "SELECT gl.*, coa.account_type FROM general_ledger gl LEFT JOIN chart_of_accounts coa ON gl.account_name = coa.account_name WHERE gl.is_void = 0"
     as_of_date = st.date_input("As of Date", value=datetime.now())
-    
     try:
         query = """
             SELECT gl.*, coa.account_type 
