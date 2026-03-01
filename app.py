@@ -194,7 +194,7 @@ if menu == "Settings / Import":
 
 # --- MODULE: ENTRY MODULE ---
 elif menu == "Entry Module":
-    st.title("⚖️ New Transaction")
+    st.title("⚖️ Multi-Row Transaction Entry")
     
     if not account_list:
         st.warning("⚠️ Please import your Chart of Accounts first.")
@@ -203,69 +203,88 @@ elif menu == "Entry Module":
     v_type = st.selectbox("Transaction Type", ["Payment Voucher", "Cash Receipt", "Sales Entry", "Journal Entry"])
     v_no = get_next_v(v_type)
     
-    st.subheader(f"Document No: {v_no}")
+    # Header Info
+    c1, c2, c3 = st.columns(3)
+    date = c1.date_input("Date", datetime.now())
+    party = c2.text_input("Payee/Customer")
+    ref = c3.text_input("Reference/Cheque #")
+    desc = st.text_area("General Narration")
 
-    # 1. CREATE THE FORM
-    with st.form("entry_form", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        date = c1.date_input("Date", datetime.now())
-        party = c1.text_input("Payee/Customer")
-        ref = c2.text_input("Reference")
-        desc = c2.text_area("Description")
+    st.markdown("### Transaction Lines")
+    st.info("Add rows for VAT, multiple expenses, or split payments. Ensure Total Difference is 0.00")
 
-        st.markdown("---")
-        dr_acc = st.selectbox("Debit Account", options=account_list, index=None, placeholder="Search...")
-        dr_amt = st.number_input("Debit Amount", min_value=0.0, format="%.2f")
-        
-        cr_acc = st.selectbox("Credit Account", options=account_list, index=None, placeholder="Search...")
-        cr_amt = st.number_input("Credit Amount", min_value=0.0, format="%.2f")
+    # Initialize a empty table for the user to fill
+    init_data = [
+        {"account": None, "description": "", "debit": 0.0, "credit": 0.0},
+        {"account": None, "description": "", "debit": 0.0, "credit": 0.0}
+    ]
+    
+    # The Data Editor
+    edited_df = st.data_editor(
+        init_data,
+        column_config={
+            "account": st.column_config.SelectboxColumn(
+                "Account Name",
+                options=account_list,
+                required=True,
+            ),
+            "debit": st.column_config.NumberColumn("Debit", min_value=0, format="%.2f"),
+            "credit": st.column_config.NumberColumn("Credit", min_value=0, format="%.2f"),
+            "description": st.column_config.TextColumn("Line Description (Optional)")
+        },
+        num_rows="dynamic",
+        use_container_width=True,
+        key="journal_editor"
+    )
 
-        submit_button = st.form_submit_button("Post Entry")
+    # Validation Calculations
+    lines_df = pd.DataFrame(edited_df)
+    total_debit = lines_df['debit'].sum()
+    total_credit = lines_df['credit'].sum()
+    difference = round(total_debit - total_credit, 2)
 
-    # 2. HANDLE SUBMISSION (Outside the form)
-    if submit_button:
-        if dr_amt == cr_amt and dr_amt > 0 and dr_acc and cr_acc:
-            new_entries = pd.DataFrame([
-                {'voucher_no': v_no, 'tr_type': v_type, 'tr_date': date, 'party': party, 'ref_no': ref, 'description': desc, 'account_name': dr_acc, 'debit': dr_amt, 'credit': 0.0},
-                {'voucher_no': v_no, 'tr_type': v_type, 'tr_date': date, 'party': party, 'ref_no': ref, 'description': desc, 'account_name': cr_acc, 'debit': 0.0, 'credit': cr_amt}
-            ])
+    # Footer Totals
+    f1, f2, f3 = st.columns(3)
+    f1.metric("Total Debit", f"{total_debit:,.2f}")
+    f2.metric("Total Credit", f"{total_credit:,.2f}")
+    f3.metric("Difference", f"{difference:,.2f}", delta=difference, delta_color="inverse")
+
+    if st.button("🚀 Post Multi-Entry Voucher"):
+        if difference != 0:
+            st.error(f"Entry is out of balance by {difference}. Please adjust rows.")
+        elif total_debit == 0:
+            st.error("Transaction amount cannot be zero.")
+        elif lines_df['account'].isnull().any():
+            st.error("Please select an account for all lines.")
+        else:
+            # Prepare for SQL
+            final_entries = []
+            for _, row in lines_df.iterrows():
+                if row['debit'] > 0 or row['credit'] > 0:
+                    final_entries.append({
+                        'voucher_no': v_no,
+                        'tr_type': v_type,
+                        'tr_date': date,
+                        'party': party,
+                        'ref_no': ref,
+                        'description': row['description'] if row['description'] else desc,
+                        'account_name': row['account'],
+                        'debit': row['debit'],
+                        'credit': row['credit']
+                    })
             
             try:
-                new_entries.to_sql('general_ledger', engine, if_exists='append', index=False)
+                pd.DataFrame(final_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
+                st.success(f"Successfully Posted {v_no} with {len(final_entries)} lines!")
                 
-                # We store the data in session_state so the button can use it
-                st.session_state['last_post'] = {
-                    'v_no': v_no, 'v_type': v_type, 'date': date, 'party': party, 
-                    'ref': ref, 'desc': desc, 'dr_acc': dr_acc, 'dr_amt': dr_amt, 
-                    'cr_acc': cr_acc, 'cr_amt': cr_amt
-                }
-                st.success(f"Successfully Posted {v_no}!")
+                # Update session state for printing (We take the first DR and first CR for the simple print template)
+                # Note: For complex prints, we'd need to update the PDF function to handle multiple rows.
+                st.session_state['last_post'] = final_entries[0] # Placeholder for simple print
+                st.balloons()
             except Exception as e:
                 st.error(f"Database Error: {e}")
-        else:
-            st.error("Error: Check balance and ensure accounts are selected.")
 
-    # 3. SHOW DOWNLOAD BUTTON (Only if a post was successful)
-    if 'last_post' in st.session_state:
-        lp = st.session_state['last_post']
-        pdf_data = generate_voucher_pdf(
-            lp['v_no'], lp['v_type'], lp['date'], lp['party'], 
-            lp['ref'], lp['desc'], lp['dr_acc'], lp['dr_amt'], 
-            lp['cr_acc'], lp['cr_amt']
-        )
-        
-        st.download_button(
-            label=f"🖨️ Download Voucher {lp['v_no']}",
-            data=pdf_data,
-            file_name=f"Voucher_{lp['v_no']}.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
-        
-        if st.button("Start New Entry"):
-            del st.session_state['last_post']
-            st.rerun()
-
+    # (Keep your Download Button logic here)
 # --- MODULE: GENERAL LEDGER ---
 elif menu == "General Ledger":
     st.title("📖 General Ledger & Bulk Print")
