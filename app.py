@@ -825,71 +825,66 @@ elif menu == "Payroll Management":
                 st.rerun()
             except Exception as e:
                 st.error(f"Post Failed: {e}")
-# --- MODULE: ADVANCED INVOICING (Dynamic Mapping) ---
+# --- MODULE: INVOICING (Buyer-Linked) ---
 elif menu == "Invoicing":
-    st.title("📄 Professional Sales Mapping")
+    st.title("📄 Credit Sales Invoice")
     
-    # 1. Fetch live accounts for the dropdowns
     try:
-        # Get Asset accounts for the 'Debit' side (Banks, Receivables)
-        asset_accounts = pd.read_sql("SELECT account_name FROM chart_of_accounts WHERE account_type = 'Asset'", engine)['account_name'].tolist()
-        # Get Revenue accounts for the 'Credit' side (Sales, Services)
-        revenue_accounts = pd.read_sql("SELECT account_name FROM chart_of_accounts WHERE account_type = 'Revenue'", engine)['account_name'].tolist()
-    except:
-        st.error("Could not load accounts. Please check your Chart of Accounts.")
+        # 1. Pull only Buyers (Accounts Receivable) for the Debit side
+        buyer_accounts = pd.read_sql(
+            "SELECT account_name FROM chart_of_accounts WHERE account_type = 'Accounts Receivable'", 
+            engine
+        )['account_name'].tolist()
+        
+        # 2. Pull Sales/Revenue categories for the Credit side
+        revenue_accounts = pd.read_sql(
+            "SELECT account_name FROM chart_of_accounts WHERE account_type = 'Revenue'", 
+            engine
+        )['account_name'].tolist()
+    except Exception as e:
+        st.error(f"Error loading Chart of Accounts: {e}")
         st.stop()
 
-    # 2. Invoice Details
-    c1, c2, c3 = st.columns(3)
+    # --- INVOICE INPUTS ---
+    c1, c2 = st.columns(2)
     inv_no = c1.text_input("Invoice #", value=f"INV-{datetime.now().strftime('%m%d%H%M')}")
     inv_date = c2.date_input("Date", value=datetime.now())
-    currency = c3.selectbox("Currency Label", ["LKR", "USD", "EUR"])
-    
-    buyer = st.text_input("Customer/Buyer Name", placeholder="e.g., London Tea Brokers")
 
-    # 3. DYNAMIC MAPPING (This is what you asked for)
-    st.info("🎯 **Account Mapping:** Choose where this money goes in your books.")
-    map_col1, map_col2 = st.columns(2)
+    st.info("🎯 **Transaction Mapping**")
+    col_a, col_b = st.columns(2)
     
-    with map_col1:
-        # Here you choose if it's a Credit Sale (Receivable) or Cash Sale (Bank)
-        debit_target = st.selectbox("Debit Account (Where is the money/debt?)", options=asset_accounts, help="Select 'Accounts Receivable' for credit or a 'Bank' for cash.")
-    
-    with map_col2:
-        # Here you choose the Revenue category
-        credit_target = st.selectbox("Credit Account (What type of sale?)", options=revenue_accounts)
+    # Selecting the SPECIFIC Buyer from your Chart of Accounts
+    selected_buyer = col_a.selectbox("Select Buyer (Debit Account)", options=buyer_accounts)
+    # Selecting the Sales category
+    selected_revenue = col_b.selectbox("Select Sales Type (Credit Account)", options=revenue_accounts)
 
-    # 4. Amounts
+    # --- PRICING ---
     st.divider()
-    p1, p2 = st.columns(2)
-    item_desc = p1.text_input("Description", "Bulk Tea Export")
-    total_val = p2.number_input(f"Total Invoice Value ({currency})", min_value=0.0)
+    curr_col, val_col = st.columns([1, 2])
+    currency = curr_col.selectbox("Currency", ["LKR", "USD", "EUR"])
+    total_val = val_col.number_input(f"Invoice Total ({currency})", min_value=0.0)
+    description = st.text_input("Remarks", value=f"Tea Sale in {currency}")
 
-    # 5. POSTING LOGIC
-    if st.button("🚀 Issue & Post to Ledger", use_container_width=True):
-        if total_val > 0 and debit_target and credit_target:
-            try:
-                invoice_entries = [
-                    {
-                        'voucher_no': inv_no, 'tr_type': 'Sales', 'tr_date': inv_date,
-                        'party': buyer, 'ref_no': f"Currency: {currency}", 'description': item_desc,
-                        'account_name': credit_target, 'debit': 0, 'credit': total_val,
-                        'created_by': st.session_state.get("username", "Admin"),
-                        'created_at': datetime.now(), 'is_void': 0
-                    },
-                    {
-                        'voucher_no': inv_no, 'tr_type': 'Sales', 'tr_date': inv_date,
-                        'party': buyer, 'ref_no': f"Currency: {currency}", 'description': item_desc,
-                        'account_name': debit_target, 'debit': total_val, 'credit': 0,
-                        'created_by': st.session_state.get("username", "Admin"),
-                        'created_at': datetime.now(), 'is_void': 0
-                    }
-                ]
-                
-                pd.DataFrame(invoice_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
-                st.success(f"Successfully posted! Debited: {debit_target} | Credited: {credit_target}")
-                st.balloons()
-            except Exception as e:
-                st.error(f"Error: {e}")
-        else:
-            st.warning("Please ensure amounts are entered and accounts are selected.")
+    # --- POSTING LOGIC ---
+    if st.button("🚀 Issue Invoice", use_container_width=True):
+        if total_val > 0 and selected_buyer and selected_revenue:
+            # Entry 1: Debit the Buyer (They owe you money)
+            # Entry 2: Credit Sales (You earned revenue)
+            invoice_entries = [
+                {
+                    'voucher_no': inv_no, 'tr_type': 'Sales', 'tr_date': inv_date,
+                    'party': selected_buyer, 'ref_no': currency, 'description': description,
+                    'account_name': selected_buyer, 'debit': total_val, 'credit': 0,
+                    'created_by': st.session_state.get("username", "Admin"),
+                    'created_at': datetime.now(), 'is_void': 0
+                },
+                {
+                    'voucher_no': inv_no, 'tr_type': 'Sales', 'tr_date': inv_date,
+                    'party': selected_buyer, 'ref_no': currency, 'description': description,
+                    'account_name': selected_revenue, 'debit': 0, 'credit': total_val,
+                    'created_by': st.session_state.get("username", "Admin"),
+                    'created_at': datetime.now(), 'is_void': 0
+                }
+            ]
+            pd.DataFrame(invoice_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
+            st.success(f"Invoice Posted! {selected_buyer} now has a receivable balance of {total_val}.")
