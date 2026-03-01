@@ -164,8 +164,19 @@ df = load_ledger()
 account_list = load_accounts()
 
 # --- 3. NAVIGATION ---
-menu = st.sidebar.radio("Main Menu", ["Dashboard", "Entry Module", "Payroll Management", "General Ledger", "Trial Balance", "Profit & Loss", "Balance Sheet", "Account Statement", "Settings / Import"])
-# ... (PDF function and database setup above) ...
+# --- DYNAMIC NAVIGATION ---
+if st.session_state["role"] == "Owner":
+    # Owner sees everything
+    menu_options = [
+        "Dashboard", "Entry Module", "Payroll Management", 
+        "General Ledger", "Trial Balance", "Profit & Loss", 
+        "Balance Sheet", "Account Statement", "Settings / Import"
+    ]
+else:
+    # Staff only sees operational tools
+    menu_options = ["Entry Module", "General Ledger","Account Statement",, "Trial Balance"]
+
+menu = st.sidebar.radio("Main Menu", menu_options)
 
 # --- MODULE: SETTINGS / IMPORT ---
 if menu == "Settings / Import":
