@@ -318,29 +318,11 @@ elif menu == "Entry Module":
     f2.metric("Total Credit", f"{total_credit:,.2f}")
     f3.metric("Difference", f"{difference:,.2f}", delta=difference, delta_color="inverse")
 
-    if st.button("🚀 Post Multi-Entry Voucher"):
-        if difference != 0:
-            st.error(f"Entry is out of balance by {difference}. Please adjust rows.")
-        elif total_debit == 0:
-            st.error("Transaction amount cannot be zero.")
-        elif lines_df['account'].isnull().any():
-            st.error("Please select an account for all lines.")
-        else:
-            # Prepare for SQL
-            final_entries = []
-            for _, row in lines_df.iterrows():
-                if row['debit'] > 0 or row['credit'] > 0:
-                    final_entries.append({
-                        'voucher_no': v_no,
-                        'tr_type': v_type,
-                        'tr_date': date,
-                        'party': party,
-                        'ref_no': ref,
-                        'description': row['description'] if row['description'] else desc,
-                        'account_name': row['account'],
-                        'debit': row['debit'],
-                        'credit': row['credit']
-                    })
+    # Inside the "if submit_button:" block, after saving to SQL:
+    st.session_state['last_post_entries'] = final_entries
+    st.session_state['voucher_meta'] = {
+        'v_no': v_no, 'v_type': v_type, 'date': date, 'party': party, 'ref': ref, 'desc': desc
+    }
             
             try:
                 pd.DataFrame(final_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
