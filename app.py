@@ -1,74 +1,94 @@
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 
-st.set_page_config(page_title="Pro Ledger: Voucher Edition", layout="wide")
+st.set_page_config(page_title="Universal Accounting System", layout="wide")
 
-# 1. DATABASE INITIALIZATION
-if 'ledger' not in st.session_state:
-    st.session_state.ledger = pd.DataFrame(columns=[
-        'Voucher_No', 'Date', 'Payee', 'Ref_No', 'Description', 'Account', 'Debit', 'Credit'
-    ])
+# 1. DATABASE CONNECTION
+conn = st.connection("gsheets", type=GSheetsConnection)
+df = conn.read(ttl="0")
 
-# 2. AUTO-GENERATION LOGIC
-def get_next_voucher():
-    if len(st.session_state.ledger) == 0:
-        return "PV-001"
-    # Get the last Voucher number and increment it
-    last_val = st.session_state.ledger['Voucher_No'].iloc[-1]
-    last_num = int(last_val.split("-")[1])
-    return f"PV-{last_num + 1:03d}"
+# 2. ENHANCED AUTO-GENERATION LOGIC
+def get_next_voucher(df, prefix):
+    if df.empty or 'Voucher_No' not in df.columns:
+        return f"{prefix}-001"
+    
+    # Filter for the specific type (e.g., only PVs)
+    filtered = df[df['Voucher_No'].str.startswith(prefix, na=False)]
+    if filtered.empty:
+        return f"{prefix}-001"
+    
+    last_val = str(filtered['Voucher_No'].iloc[-1])
+    try:
+        last_num = int(last_val.split("-")[1])
+        return f"{prefix}-{last_num + 1:03d}"
+    except:
+        return f"{prefix}-001"
 
 # NAVIGATION
-menu = st.sidebar.radio("Navigation", ["Payment Voucher", "View Ledger"])
+menu = st.sidebar.radio("Main Menu", ["Data Entry", "General Ledger", "Financial Reports"])
 
-if menu == "Payment Voucher":
-    st.title("💸 Payment Voucher Entry")
+if menu == "Data Entry":
+    st.title("📝 Universal Entry Module")
     
-    # Auto-generate number
-    v_no = get_next_voucher()
-    st.subheader(f"Voucher Number: {v_no}")
+    # TYPE SELECTOR
+    v_type = st.selectbox("Select Transaction Type", 
+                          ["Payment Voucher", "Cash Receipt", "Sales Entry", "Journal Entry"])
+    
+    # MAP PREFIXES
+    prefix_map = {
+        "Payment Voucher": "PV",
+        "Cash Receipt": "CR",
+        "Sales Entry": "SJ",
+        "Journal Entry": "JV"
+    }
+    prefix = prefix_map[v_type]
+    v_no = get_next_voucher(df, prefix)
+    
+    st.subheader(f"Document Number: {v_no}")
 
-    with st.form("pv_form", clear_on_submit=True):
+    with st.form("universal_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
             date = st.date_input("Date", datetime.now())
-            payee = st.text_input("Bearer of Cheque / Payee")
-            ref_no = st.text_input("Reference / Cheque Number")
+            # Dynamic Labeling
+            party_label = "Received From / Customer" if v_type in ["Cash Receipt", "Sales Entry"] else "Paid To / Bearer"
+            party = st.text_input(party_label)
+            ref_no = st.text_input("Cheque / Reference Number")
         
         with col2:
-            description = st.text_area("Description / Narration")
+            description = st.text_area("Narration / Remarks")
 
-        st.divider()
-        st.markdown("### Double Entry Posting")
-        row1_col1, row1_col2, row1_col3 = st.columns([2, 1, 1])
+        st.markdown("---")
+        st.markdown("### Ledger Posting")
         
-        # Line 1: Usually the Expense (Debit)
-        dr_acc = row1_col1.text_input("Debit Account (e.g., Rent Expense)")
-        dr_amt = row1_col2.number_input("Debit Amount", min_value=0.0, step=0.01)
-        
-        # Line 2: Usually the Bank/Cash (Credit)
-        cr_acc = row1_col1.text_input("Credit Account (e.g., Bank Account)")
-        cr_amt = row1_col3.number_input("Credit Amount", min_value=0.0, step=0.01)
+        row1, row2 = st.columns(2)
+        with row1:
+            dr_acc = st.text_input("Debit Account")
+            dr_amt = st.number_input("Debit Amount", min_value=0.0, format="%.2f")
+        with row2:
+            cr_acc = st.text_input("Credit Account")
+            cr_amt = st.number_input("Credit Amount", min_value=0.0, format="%.2f")
 
-        submit = st.form_submit_button("Generate & Post Voucher")
-
-        if submit:
-            if dr_amt != cr_amt:
-                st.error(f"Voucher Unbalanced! Difference: {abs(dr_amt-cr_amt)}")
-            elif dr_amt == 0:
-                st.error("Amount must be greater than zero.")
+        if st.form_submit_button("Post to Cloud"):
+            if dr_amt != cr_amt or dr_amt == 0:
+                st.error("Transaction must balance and be greater than zero.")
             else:
-                # Add two rows for the double entry
                 new_entries = pd.DataFrame([
-                    {'Voucher_No': v_no, 'Date': date, 'Payee': payee, 'Ref_No': ref_no, 
+                    {'Voucher_No': v_no, 'Type': v_type, 'Date': str(date), 'Party': party, 'Ref_No': ref_no, 
                      'Description': description, 'Account': dr_acc, 'Debit': dr_amt, 'Credit': 0.0},
-                    {'Voucher_No': v_no, 'Date': date, 'Payee': payee, 'Ref_No': ref_no, 
+                    {'Voucher_No': v_no, 'Type': v_type, 'Date': str(date), 'Party': party, 'Ref_No': ref_no, 
                      'Description': description, 'Account': cr_acc, 'Debit': 0.0, 'Credit': cr_amt}
                 ])
-                st.session_state.ledger = pd.concat([st.session_state.ledger, new_entries], ignore_index=True)
-                st.success(f"Voucher {v_no} posted successfully!")
+                
+                updated_df = pd.concat([df, new_entries], ignore_index=True)
+                conn.update(data=updated_df)
+                st.success(f"{v_type} {v_no} Saved Successfully!")
 
-elif menu == "View Ledger":
-    st.title("📖 General Ledger & Voucher History")
-    st.dataframe(st.session_state.ledger, use_container_width=True)
+elif menu == "General Ledger":
+    st.title("📖 Live Transaction History")
+    # Add a filter so you can see just PVs or just CRs
+    filter_type = st.multiselect("Filter by Type", df['Type'].unique() if not df.empty else [])
+    display_df = df[df['Type'].isin(filter_type)] if filter_type else df
+    st.dataframe(display_df, use_container_width=True)
