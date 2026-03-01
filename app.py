@@ -104,3 +104,37 @@ if menu == "Entry Module":
                     st.error(f"Database Error: {e}")
 
 elif menu == "General Ledger":
+    elif menu == "General Ledger":
+    st.title("📖 General Ledger")
+    if not df.empty:
+        # We use a filter here so you can search for specific accounts
+        search = st.text_input("Search by Account or Voucher Number")
+        if search:
+            display_df = df[df.apply(lambda row: search.lower() in str(row).lower(), axis=1)]
+        else:
+            display_df = df
+        st.dataframe(display_df, use_container_width=True)
+    else:
+        st.info("The ledger is currently empty. Post a transaction to see it here!")
+
+elif menu == "Trial Balance":
+    st.title("📊 Trial Balance")
+    if not df.empty:
+        # Grouping data to show account totals
+        tb = df.groupby('account_name')[['debit', 'credit']].sum()
+        tb['Balance'] = tb['debit'] - tb['credit']
+        st.table(tb)
+        
+        total_dr = df['debit'].sum()
+        total_cr = df['credit'].sum()
+        
+        c1, c2 = st.columns(2)
+        c1.metric("Total Debits", f"${total_dr:,.2f}")
+        c2.metric("Total Credits", f"${total_cr:,.2f}")
+        
+        if total_dr == total_cr:
+            st.success("Ledger is Balanced ✅")
+        else:
+            st.error(f"Ledger is Out of Balance by ${abs(total_dr - total_cr):,.2f} ❌")
+    else:
+        st.warning("No data available to generate a Trial Balance.")
