@@ -11,42 +11,78 @@ def generate_voucher_pdf(v_no, v_type, date, party, ref, desc, dr_acc, dr_amt, c
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
 
-    # Header
-    c.setFont("Helvetica-Bold", 16)
-    c.drawCentredString(width/2.0, height - 50, "OFFICIAL VOUCHER")
+    # --- COMPANY BRANDING ---
+    c.setFont("Helvetica-Bold", 20)
+    c.setFillColorRGB(0.1, 0.2, 0.5)  # Dark Blue color for the logo/name
+    c.drawString(50, height - 50, "YOUR COMPANY NAME LTD.")
     
-    c.setFont("Helvetica", 12)
-    c.drawString(50, height - 100, f"Voucher No: {v_no}")
-    c.drawString(50, height - 120, f"Type: {v_type}")
-    c.drawString(400, height - 100, f"Date: {date}")
+    c.setFont("Helvetica", 9)
+    c.setFillColorRGB(0.3, 0.3, 0.3)  # Grey for address
+    c.drawString(50, height - 65, "123 Business Avenue, Financial District")
+    c.drawString(50, height - 75, "City, Country | Tel: +123 456 789")
+    c.drawString(50, height - 85, "Email: accounts@yourcompany.com")
+    
+    # Simple Graphic Logo (A blue square with 'C' for Company)
+    c.rect(480, height - 85, 50, 50, fill=1)
+    c.setFillColorRGB(1, 1, 1) # White text
+    c.setFont("Helvetica-Bold", 30)
+    c.drawString(492, height - 75, "C")
+    
+    # Divider Line
+    c.setStrokeColorRGB(0.7, 0.7, 0.7)
+    c.line(50, height - 100, 550, height - 100)
 
-    # Body Table Box
-    c.rect(50, height - 300, 500, 150)
-    c.line(50, height - 180, 550, height - 180) # Table Header line
+    # --- VOUCHER DETAILS ---
+    c.setFillColorRGB(0, 0, 0) # Back to black
+    c.setFont("Helvetica-Bold", 14)
+    c.drawCentredString(width/2.0, height - 130, f"{v_type.upper()}")
     
-    c.drawString(60, height - 175, "Account Description")
-    c.drawString(350, height - 175, "Debit")
-    c.drawString(450, height - 175, "Credit")
-    
-    # Entries
-    c.drawString(60, height - 200, f"{dr_acc}")
-    c.drawString(350, height - 200, f"{dr_amt:,.2f}")
-    c.drawString(450, height - 200, "0.00")
-    
-    c.drawString(60, height - 220, f"{cr_acc}")
-    c.drawString(350, height - 220, "0.00")
-    c.drawString(450, height - 220, f"{cr_amt:,.2f}")
+    c.setFont("Helvetica", 11)
+    c.drawString(50, height - 160, f"Voucher No: {v_no}")
+    c.drawString(400, height - 160, f"Date: {date}")
+    c.drawString(50, height - 180, f"Reference: {ref}")
+    c.drawString(50, height - 200, f"Party: {party}")
 
-    # Narration
-    c.drawString(50, height - 320, f"Description: {desc}")
-    c.drawString(50, height - 340, f"Party: {party}")
-
-    # Signatures
-    c.line(50, 100, 200, 100)
-    c.drawString(50, 85, "Prepared By")
+    # --- TABLE SECTION ---
+    # Header Box
+    c.setFillColorRGB(0.95, 0.95, 0.95)
+    c.rect(50, height - 230, 500, 20, fill=1)
+    c.setFillColorRGB(0, 0, 0)
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(60, height - 225, "Account Description")
+    c.drawRightString(440, height - 225, "Debit")
+    c.drawRightString(540, height - 225, "Credit")
     
-    c.line(350, 100, 500, 100)
-    c.drawString(350, 85, "Authorized Signatory")
+    # Table Content
+    c.setFont("Helvetica", 10)
+    # Row 1 (Debit)
+    c.drawString(60, height - 250, f"{dr_acc}")
+    c.drawRightString(440, height - 250, f"{dr_amt:,.2f}")
+    c.drawRightString(540, height - 250, "0.00")
+    
+    # Row 2 (Credit)
+    c.drawString(60, height - 270, f"{cr_acc}")
+    c.drawRightString(440, height - 270, "0.00")
+    c.drawRightString(540, height - 270, f"{cr_amt:,.2f}")
+
+    # Total Box
+    c.line(50, height - 280, 550, height - 280)
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(60, height - 295, "TOTAL")
+    c.drawRightString(440, height - 295, f"{dr_amt:,.2f}")
+    c.drawRightString(540, height - 295, f"{cr_amt:,.2f}")
+
+    # --- NARRATION ---
+    c.setFont("Helvetica-Oblique", 10)
+    c.drawString(50, height - 330, f"Narration: {desc}")
+
+    # --- SIGNATURES ---
+    c.setFont("Helvetica", 9)
+    c.line(50, 150, 200, 150)
+    c.drawString(50, 135, "Prepared By")
+    
+    c.line(350, 150, 500, 150)
+    c.drawString(350, 135, "Authorized Signatory")
 
     c.showPage()
     c.save()
