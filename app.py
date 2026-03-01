@@ -305,17 +305,20 @@ elif menu == "Entry Module":
             st.session_state['last_post'] = None
             st.rerun()
 # --- MODULE: GENERAL LEDGER ---
+# --- MODULE: GENERAL LEDGER ---
 elif menu == "General Ledger":
     st.title("📖 General Ledger Archive")
+    
+    # 1. FILTERS
     c1, c2 = st.columns(2)
     s_date = c1.date_input("From", value=datetime(datetime.now().year, datetime.now().month, 1))
     e_date = c2.date_input("To", value=datetime.now())
     
-    # Filtering
     df['tr_date'] = pd.to_datetime(df['tr_date']).dt.date
     filtered_df = df[(df['tr_date'] >= s_date) & (df['tr_date'] <= e_date)]
     
-    st.subheader("Bulk Print Selection")
+    # 2. BULK PRINT SECTION
+    st.subheader("🖨️ Bulk Print & Export")
     vouchers = filtered_df['voucher_no'].unique()
     to_print = st.multiselect("Select Vouchers to Export", vouchers)
     
@@ -334,7 +337,39 @@ elif menu == "General Ledger":
         st.download_button("📥 Download Combined PDF", out, "bulk_vouchers.pdf", "application/pdf")
 
     st.divider()
+
+    # 3. DATA VIEW
+    st.subheader("Transaction History")
     st.dataframe(filtered_df, use_container_width=True)
+
+    # 4. DELETE SECTION (New Feature)
+    st.divider()
+    with st.expander("⚠️ Danger Zone: Delete Voucher"):
+        st.warning("Deleting a voucher will remove all its debit and credit lines permanently.")
+        v_to_delete = st.selectbox("Select Voucher ID to Delete", options=["None"] + list(vouchers))
+        
+        if v_to_delete != "None":
+            # Show a preview of what's being deleted
+            preview = filtered_df[filtered_df['voucher_no'] == v_to_delete]
+            st.write("Reviewing entries for deletion:")
+            st.table(preview[['account_name', 'debit', 'credit']])
+            
+            confirm = st.checkbox(f"I confirm I want to delete {v_to_delete}")
+            
+            if st.button("🗑️ Permanently Delete Voucher"):
+                if confirm:
+                    try:
+                        with engine.connect() as conn:
+                            # Use SQLAlchemy text to execute the delete
+                            query = text("DELETE FROM general_ledger WHERE voucher_no = :v_no")
+                            conn.execute(query, {"v_no": v_to_delete})
+                            conn.commit()
+                        st.success(f"Voucher {v_to_delete} has been erased.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error deleting: {e}")
+                else:
+                    st.info("Please check the confirmation box first.")
 
 # --- MODULE: TRIAL BALANCE ---
 elif menu == "Trial Balance":
