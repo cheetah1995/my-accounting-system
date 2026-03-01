@@ -119,24 +119,93 @@ df = load_ledger()
 account_list = load_accounts()
 
 # 3. VOUCHER GENERATOR LOGIC
-def get_next_v(v_type):
-    prefix_map = {"Payment Voucher": "PV", "Cash Receipt": "CR", "Sales Entry": "SJ", "Journal Entry": "JV"}
-    prefix = prefix_map.get(v_type, "JV")
+def generate_voucher_pdf(v_no, v_type, date, party, ref, desc, entries_list):
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    # --- COMPANY BRANDING (Same as before) ---
+    c.setFont("Helvetica-Bold", 20)
+    c.setFillColorRGB(0.1, 0.2, 0.5)
+    c.drawString(50, height - 50, "YOUR COMPANY NAME LTD.")
+    c.setFont("Helvetica", 9)
+    c.setFillColorRGB(0.3, 0.3, 0.3)
+    c.drawString(50, height - 65, "123 Business Avenue, City, Country")
     
-    if df.empty:
-        return f"{prefix}-001"
+    # Divider
+    c.setStrokeColorRGB(0.7, 0.7, 0.7)
+    c.line(50, height - 90, 550, height - 90)
+
+    # --- VOUCHER HEADER ---
+    c.setFillColorRGB(0, 0, 0)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, height - 110, f"VOUCHER TYPE: {v_type.upper()}")
+    c.setFont("Helvetica", 10)
+    c.drawString(50, height - 130, f"Voucher No: {v_no}")
+    c.drawString(400, height - 130, f"Date: {date}")
+    c.drawString(50, height - 145, f"Party: {party}")
+    c.drawString(400, height - 145, f"Ref: {ref}")
+
+    # --- DYNAMIC TABLE ---
+    y_position = height - 180
     
-    filtered = df[df['voucher_no'].str.startswith(prefix, na=False)]
-    if filtered.empty:
-        return f"{prefix}-001"
+    # Table Headers
+    c.setFont("Helvetica-Bold", 10)
+    c.line(50, y_position + 5, 550, y_position + 5)
+    c.drawString(60, y_position - 10, "Account Name & Description")
+    c.drawRightString(440, y_position - 10, "Debit")
+    c.drawRightString(540, y_position - 10, "Credit")
+    c.line(50, y_position - 15, 550, y_position - 15)
     
-    try:
-        # Extract number from the latest voucher (e.g., 'PV-005' -> 5)
-        last_val = filtered['voucher_no'].iloc[0]
-        last_num = int(last_val.split("-")[1])
-        return f"{prefix}-{last_num + 1:03d}"
-    except:
-        return f"{prefix}-001"
+    y_position -= 30
+    total_dr = 0
+    total_cr = 0
+
+    # Loop through all entries (This is the magic part)
+    c.setFont("Helvetica", 9)
+    for entry in entries_list:
+        # Check if we are running out of page space
+        if y_position < 150:
+            c.showPage() # Start new page if needed
+            y_position = height - 50 
+        
+        c.drawString(60, y_position, f"{entry['account_name']}")
+        c.drawRightString(440, y_position, f"{entry['debit']:,.2f}")
+        c.drawRightString(540, y_position, f"{entry['credit']:,.2f}")
+        
+        # Add line description if it exists
+        if entry.get('description'):
+            y_position -= 12
+            c.setFont("Helvetica-Oblique", 8)
+            c.drawString(70, y_position, f"- {entry['description']}")
+            c.setFont("Helvetica", 9)
+
+        total_dr += entry['debit']
+        total_cr += entry['credit']
+        y_position -= 20
+
+    # --- TOTALS ---
+    c.line(50, y_position, 550, y_position)
+    c.setFont("Helvetica-Bold", 10)
+    y_position -= 15
+    c.drawString(60, y_position, "TOTAL")
+    c.drawRightString(440, y_position, f"{total_dr:,.2f}")
+    c.drawRightString(540, y_position, f"{total_cr:,.2f}")
+
+    # --- FOOTER ---
+    c.setFont("Helvetica-Oblique", 9)
+    c.drawString(50, 150, f"General Remarks: {desc}")
+    
+    c.setFont("Helvetica", 9)
+    c.line(50, 80, 200, 80)
+    c.drawString(50, 65, "Prepared By")
+    c.line(350, 80, 500, 80)
+    c.drawString(350, 65, "Authorized Signatory")
+
+    c.showPage()
+    c.save()
+    buffer.seek(0)
+    return buffer
 
 # --- SIDEBAR NAVIGATION ---
 st.sidebar.title("Navigation")
