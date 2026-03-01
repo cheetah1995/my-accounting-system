@@ -547,6 +547,7 @@ elif menu == "Profit & Loss":
 # Instead of: SELECT * FROM general_ledger
 # Use:
 query = "SELECT * FROM general_ledger WHERE is_void = 0"
+
 # --- MODULE: BALANCE SHEET (FIXED VERSION) ---
 elif menu == "Balance Sheet":
     st.title("🏦 Classified Balance Sheet")
@@ -645,6 +646,7 @@ elif menu == "Balance Sheet":
 # Instead of: SELECT * FROM general_ledger
 # Use:
 query = "SELECT * FROM general_ledger WHERE is_void = 0"
+
 # --- MODULE: ACCOUNT STATEMENT ---
 elif menu == "Account Statement":
     st.title("🔍 Account Statement (Drill-down)")
