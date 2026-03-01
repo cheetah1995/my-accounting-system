@@ -139,8 +139,7 @@ df = load_ledger()
 account_list = load_accounts()
 
 # --- 3. NAVIGATION ---
-menu = st.sidebar.radio("Main Menu", ["Entry Module", "General Ledger", "Trial Balance", "Profit & Loss", "Balance Sheet", "Settings / Import"])
-
+menu = st.sidebar.radio("Main Menu", ["Entry Module", "General Ledger", "Trial Balance", "Profit & Loss", "Balance Sheet", "Account Statement", "Settings / Import"])
 # ... (PDF function and database setup above) ...
 
 # --- MODULE: SETTINGS / IMPORT ---
