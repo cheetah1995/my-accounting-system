@@ -1,103 +1,106 @@
 import streamlit as st
 import pandas as pd
+from sqlalchemy import create_engine, text
 from datetime import datetime
 
-st.set_page_config(page_title="Universal Accounting System", layout="wide")
+# PAGE CONFIG
+st.set_page_config(page_title="Professional SQL Ledger", layout="wide")
 
-# --- SIMPLIFIED CONNECTION ---
-# Replace the ID below with your actual Google Sheet ID
-SHEET_ID = "YOUR_ACTUAL_ID_HERE" 
-SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
-
+# 1. DATABASE CONNECTION
+# This pulls the 'url' from your Streamlit Secrets
 try:
-    df = pd.read_csv(SHEET_URL)
+    DB_URL = st.secrets["connections"]["postgresql"]["url"]
+    engine = create_engine(DB_URL)
 except Exception as e:
-    st.error("Cannot connect to Google Sheets. Please ensure the sheet is shared as 'Anyone with the link can view'.")
-    df = pd.DataFrame(columns=['Voucher_No', 'Type', 'Date', 'Party', 'Ref_No', 'Description', 'Account', 'Debit', 'Credit'])
-# -----------------------------
+    st.error("Database connection string missing in Secrets!")
+    st.stop()
 
-# ... (The rest of your code for get_next_voucher and the forms remains the same)
+# 2. DATA LOADING LOGIC
+def load_data():
+    query = "SELECT * FROM general_ledger ORDER BY tr_date DESC, id DESC"
+    try:
+        return pd.read_sql(query, engine)
+    except Exception:
+        # If the table doesn't exist yet, return an empty dataframe
+        return pd.DataFrame(columns=['voucher_no', 'tr_type', 'tr_date', 'party', 'ref_no', 'description', 'account_name', 'debit', 'credit'])
 
-# 2. ENHANCED AUTO-GENERATION LOGIC
-def get_next_voucher(df, prefix):
-    if df.empty or 'Voucher_No' not in df.columns:
+df = load_data()
+
+# 3. VOUCHER NUMBER GENERATOR
+def get_next_v(prefix):
+    if df.empty:
         return f"{prefix}-001"
-    
-    # Filter for the specific type (e.g., only PVs)
-    filtered = df[df['Voucher_No'].str.startswith(prefix, na=False)]
+    # Filter for the specific type (e.g., PV)
+    filtered = df[df['voucher_no'].str.startswith(prefix, na=False)]
     if filtered.empty:
         return f"{prefix}-001"
     
-    last_val = str(filtered['Voucher_No'].iloc[-1])
+    # Extract number from 'PV-001' -> 1
     try:
+        last_val = filtered['voucher_no'].iloc[0] # Get latest because of DESC order
         last_num = int(last_val.split("-")[1])
         return f"{prefix}-{last_num + 1:03d}"
     except:
         return f"{prefix}-001"
 
-# NAVIGATION
-menu = st.sidebar.radio("Main Menu", ["Data Entry", "General Ledger", "Financial Reports"])
+# --- SIDEBAR NAVIGATION ---
+st.sidebar.title("ERP Modules")
+menu = st.sidebar.radio("Go to", ["Entry Module", "General Ledger", "Trial Balance"])
 
-if menu == "Data Entry":
-    st.title("📝 Universal Entry Module")
+if menu == "Entry Module":
+    st.title("⚖️ Double-Entry Posting")
     
-    # TYPE SELECTOR
-    v_type = st.selectbox("Select Transaction Type", 
-                          ["Payment Voucher", "Cash Receipt", "Sales Entry", "Journal Entry"])
+    v_type = st.selectbox("Transaction Type", ["Payment Voucher", "Cash Receipt", "Sales Entry", "Journal Entry"])
     
-    # MAP PREFIXES
-    prefix_map = {
-        "Payment Voucher": "PV",
-        "Cash Receipt": "CR",
-        "Sales Entry": "SJ",
-        "Journal Entry": "JV"
-    }
+    # Map prefixes
+    prefix_map = {"Payment Voucher": "PV", "Cash Receipt": "CR", "Sales Entry": "SJ", "Journal Entry": "JV"}
     prefix = prefix_map[v_type]
-    v_no = get_next_voucher(df, prefix)
+    v_no = get_next_v(prefix)
     
-    st.subheader(f"Document Number: {v_no}")
+    st.subheader(f"New Document: {v_no}")
 
-    with st.form("universal_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            date = st.date_input("Date", datetime.now())
-            # Dynamic Labeling
-            party_label = "Received From / Customer" if v_type in ["Cash Receipt", "Sales Entry"] else "Paid To / Bearer"
-            party = st.text_input(party_label)
-            ref_no = st.text_input("Cheque / Reference Number")
-        
-        with col2:
-            description = st.text_area("Narration / Remarks")
+    with st.form("entry_form", clear_on_submit=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            date = st.date_input("Transaction Date", datetime.now())
+            party = st.text_input("Payee / Customer Name")
+        with c2:
+            ref = st.text_input("Ref / Cheque Number")
+            desc = st.text_area("Narration")
 
         st.markdown("---")
-        st.markdown("### Ledger Posting")
         
-        row1, row2 = st.columns(2)
-        with row1:
-            dr_acc = st.text_input("Debit Account")
-            dr_amt = st.number_input("Debit Amount", min_value=0.0, format="%.2f")
-        with row2:
-            cr_acc = st.text_input("Credit Account")
-            cr_amt = st.number_input("Credit Amount", min_value=0.0, format="%.2f")
+        # Row for Debit/Credit Entry
+        col_acc, col_dr, col_cr = st.columns([2, 1, 1])
+        
+        dr_acc = col_acc.text_input("Debit Account")
+        dr_amt = col_dr.number_input("Debit Amount", min_value=0.0, step=0.01, key="dr")
+        
+        cr_acc = col_acc.text_input("Credit Account")
+        cr_amt = col_cr.number_input("Credit Amount", min_value=0.0, step=0.01, key="cr")
 
-        if st.form_submit_button("Post to Cloud"):
+        submit = st.form_submit_button("Post to Cloud Ledger")
+
+        if submit:
             if dr_amt != cr_amt or dr_amt == 0:
-                st.error("Transaction must balance and be greater than zero.")
+                st.error(f"Entry does not balance! Difference: {abs(dr_amt-cr_amt)}")
             else:
+                # Prepare data for SQL
+                # Note: Column names must match your SQL table exactly
                 new_entries = pd.DataFrame([
-                    {'Voucher_No': v_no, 'Type': v_type, 'Date': str(date), 'Party': party, 'Ref_No': ref_no, 
-                     'Description': description, 'Account': dr_acc, 'Debit': dr_amt, 'Credit': 0.0},
-                    {'Voucher_No': v_no, 'Type': v_type, 'Date': str(date), 'Party': party, 'Ref_No': ref_no, 
-                     'Description': description, 'Account': cr_acc, 'Debit': 0.0, 'Credit': cr_amt}
+                    {'voucher_no': v_no, 'tr_type': v_type, 'tr_date': date, 'party': party, 'ref_no': ref, 
+                     'description': desc, 'account_name': dr_acc, 'debit': dr_amt, 'credit': 0.0},
+                    {'voucher_no': v_no, 'tr_type': v_type, 'tr_date': date, 'party': party, 'ref_no': ref, 
+                     'description': desc, 'account_name': cr_acc, 'debit': 0.0, 'credit': cr_amt}
                 ])
                 
-                updated_df = pd.concat([df, new_entries], ignore_index=True)
-                conn.update(data=updated_df)
-                st.success(f"{v_type} {v_no} Saved Successfully!")
+                # Push to SQL
+                try:
+                    new_entries.to_sql('general_ledger', engine, if_exists='append', index=False)
+                    st.success(f"Successfully Posted {v_no}!")
+                    st.balloons()
+                    st.rerun() # Refresh to update the voucher number
+                except Exception as e:
+                    st.error(f"Database Error: {e}")
 
 elif menu == "General Ledger":
-    st.title("📖 Live Transaction History")
-    # Add a filter so you can see just PVs or just CRs
-    filter_type = st.multiselect("Filter by Type", df['Type'].unique() if not df.empty else [])
-    display_df = df[df['Type'].isin(filter_type)] if filter_type else df
-    st.dataframe(display_df, use_container_width=True)
