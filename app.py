@@ -139,7 +139,7 @@ df = load_ledger()
 account_list = load_accounts()
 
 # --- 3. NAVIGATION ---
-menu = st.sidebar.radio("Main Menu", ["Entry Module", "General Ledger", "Trial Balance", "Profit & Loss", "Balance Sheet", "Account Statement", "Settings / Import"])
+menu = st.sidebar.radio("Main Menu", ["Dashboard", "Entry Module", "General Ledger", "Trial Balance", "Profit & Loss", "Balance Sheet", "Account Statement", "Settings / Import"])
 # ... (PDF function and database setup above) ...
 
 # --- MODULE: SETTINGS / IMPORT ---
@@ -611,3 +611,73 @@ elif menu == "Account Statement":
 
     except Exception as e:
         st.error(f"Error generating statement: {e}")
+# --- MODULE: DASHBOARD ---
+if menu == "Dashboard":
+    st.title("📊 Executive Dashboard")
+    
+    try:
+        # Load data and merge with COA for types
+        query = """
+            SELECT gl.*, coa.account_type 
+            FROM general_ledger gl
+            LEFT JOIN chart_of_accounts coa ON gl.account_name = coa.account_name
+        """
+        df_dash = pd.read_sql(query, engine)
+        df_dash['tr_date'] = pd.to_datetime(df_dash['tr_date'])
+        df_dash['Month'] = df_dash['tr_date'].dt.strftime('%Y-%m')
+
+        # 1. TOP LEVEL METRICS (Current Month)
+        curr_month = datetime.now().strftime('%Y-%m')
+        m_data = df_dash[df_dash['Month'] == curr_month]
+        
+        rev_m = m_data[m_data['account_type'] == 'Revenue']['credit'].sum() - m_data[m_data['account_type'] == 'Revenue']['debit'].sum()
+        exp_m = m_data[m_data['account_type'] == 'Expense']['debit'].sum() - m_data[m_data['account_type'] == 'Expense']['credit'].sum()
+        
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Revenue (This Month)", f"LKR {rev_m:,.2f}")
+        col2.metric("Expenses (This Month)", f"LKR {exp_m:,.2f}")
+        col3.metric("Net Profit", f"LKR {(rev_m - exp_m):,.2f}")
+
+        st.divider()
+
+        # 2. MONTHLY TREND CHART (Revenue vs Expenses)
+        st.subheader("📈 Monthly Performance Trend")
+        
+        # Grouping by month and type
+        trend = df_dash.groupby(['Month', 'account_type'])[['debit', 'credit']].sum().reset_index()
+        
+        # Calculate actual Net values for Revenue and Expenses
+        plot_data = []
+        for m in trend['Month'].unique():
+            m_rev = trend[(trend['Month'] == m) & (trend['account_type'] == 'Revenue')]
+            m_exp = trend[(trend['Month'] == m) & (trend['account_type'] == 'Expense')]
+            
+            plot_data.append({
+                'Month': m,
+                'Revenue': m_rev['credit'].sum() - m_rev['debit'].sum(),
+                'Expenses': m_exp['debit'].sum() - m_exp['credit'].sum()
+            })
+        
+        plot_df = pd.DataFrame(plot_data).set_index('Month')
+        st.bar_chart(plot_df)
+
+        # 3. EXPENSE COMPOSITION (Where is the money going?)
+        st.divider()
+        c1, c2 = st.columns(2)
+        
+        with c1:
+            st.subheader("🍩 Expense Breakdown")
+            exp_only = df_dash[df_dash['account_type'] == 'Expense']
+            exp_grouped = exp_only.groupby('account_name').apply(lambda x: x['debit'].sum() - x['credit'].sum())
+            if not exp_grouped.empty:
+                st.write("Top Expenses by Account")
+                st.bar_chart(exp_grouped)
+            else:
+                st.info("No expenses recorded yet.")
+
+        with c2:
+            st.subheader("📍 Recent Transactions")
+            st.dataframe(df_dash[['tr_date', 'party', 'description', 'debit', 'credit']].head(10), use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Dashboard Error: {e}")
