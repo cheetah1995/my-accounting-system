@@ -2,7 +2,56 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
 from datetime import datetime
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+import io
 
+def generate_voucher_pdf(v_no, v_type, date, party, ref, desc, dr_acc, dr_amt, cr_acc, cr_amt):
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    # Header
+    c.setFont("Helvetica-Bold", 16)
+    c.drawCentredString(width/2.0, height - 50, "OFFICIAL VOUCHER")
+    
+    c.setFont("Helvetica", 12)
+    c.drawString(50, height - 100, f"Voucher No: {v_no}")
+    c.drawString(50, height - 120, f"Type: {v_type}")
+    c.drawString(400, height - 100, f"Date: {date}")
+
+    # Body Table Box
+    c.rect(50, height - 300, 500, 150)
+    c.line(50, height - 180, 550, height - 180) # Table Header line
+    
+    c.drawString(60, height - 175, "Account Description")
+    c.drawString(350, height - 175, "Debit")
+    c.drawString(450, height - 175, "Credit")
+    
+    # Entries
+    c.drawString(60, height - 200, f"{dr_acc}")
+    c.drawString(350, height - 200, f"{dr_amt:,.2f}")
+    c.drawString(450, height - 200, "0.00")
+    
+    c.drawString(60, height - 220, f"{cr_acc}")
+    c.drawString(350, height - 220, "0.00")
+    c.drawString(450, height - 220, f"{cr_amt:,.2f}")
+
+    # Narration
+    c.drawString(50, height - 320, f"Description: {desc}")
+    c.drawString(50, height - 340, f"Party: {party}")
+
+    # Signatures
+    c.line(50, 100, 200, 100)
+    c.drawString(50, 85, "Prepared By")
+    
+    c.line(350, 100, 500, 100)
+    c.drawString(350, 85, "Authorized Signatory")
+
+    c.showPage()
+    c.save()
+    buffer.seek(0)
+    return buffer
 # PAGE CONFIG
 st.set_page_config(page_title="SQL ERP Pro", layout="wide")
 
