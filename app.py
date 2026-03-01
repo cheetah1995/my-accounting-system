@@ -158,8 +158,6 @@ if menu == "Settings / Import":
 
 # --- MODULE: ENTRY MODULE ---
 elif menu == "Entry Module":
-    # ... (rest of your entry module code)
-
     st.title("⚖️ New Transaction")
     
     if not account_list:
@@ -171,6 +169,7 @@ elif menu == "Entry Module":
     
     st.subheader(f"Document No: {v_no}")
 
+    # 1. CREATE THE FORM
     with st.form("entry_form", clear_on_submit=True):
         c1, c2 = st.columns(2)
         date = c1.date_input("Date", datetime.now())
@@ -185,32 +184,51 @@ elif menu == "Entry Module":
         cr_acc = st.selectbox("Credit Account", options=account_list, index=None, placeholder="Search...")
         cr_amt = st.number_input("Credit Amount", min_value=0.0, format="%.2f")
 
-        if st.form_submit_button("Post Entry"):
-            if dr_amt == cr_amt and dr_amt > 0 and dr_acc and cr_acc:
-                new_entries = pd.DataFrame([
-                    {'voucher_no': v_no, 'tr_type': v_type, 'tr_date': date, 'party': party, 'ref_no': ref, 'description': desc, 'account_name': dr_acc, 'debit': dr_amt, 'credit': 0.0},
-                    {'voucher_no': v_no, 'tr_type': v_type, 'tr_date': date, 'party': party, 'ref_no': ref, 'description': desc, 'account_name': cr_acc, 'debit': 0.0, 'credit': cr_amt}
-                ])
+        submit_button = st.form_submit_button("Post Entry")
+
+    # 2. HANDLE SUBMISSION (Outside the form)
+    if submit_button:
+        if dr_amt == cr_amt and dr_amt > 0 and dr_acc and cr_acc:
+            new_entries = pd.DataFrame([
+                {'voucher_no': v_no, 'tr_type': v_type, 'tr_date': date, 'party': party, 'ref_no': ref, 'description': desc, 'account_name': dr_acc, 'debit': dr_amt, 'credit': 0.0},
+                {'voucher_no': v_no, 'tr_type': v_type, 'tr_date': date, 'party': party, 'ref_no': ref, 'description': desc, 'account_name': cr_acc, 'debit': 0.0, 'credit': cr_amt}
+            ])
+            
+            try:
+                new_entries.to_sql('general_ledger', engine, if_exists='append', index=False)
                 
-                try:
-                    new_entries.to_sql('general_ledger', engine, if_exists='append', index=False)
-                    st.success(f"Successfully Posted {v_no}!")
-                    
-                    # GENERATE PDF FOR DOWNLOAD
-                    pdf_data = generate_voucher_pdf(v_no, v_type, date, party, ref, desc, dr_acc, dr_amt, cr_acc, cr_amt)
-                    
-                    st.download_button(
-                        label="🖨️ Download Voucher PDF",
-                        data=pdf_data,
-                        file_name=f"Voucher_{v_no}.pdf",
-                        mime="application/pdf"
-                    )
-                    
-                    # Note: We remove st.rerun() here so the button stays visible long enough for you to click it!
-                except Exception as e:
-                    st.error(f"Database Error: {e}")
-            else:
-                st.error("Error: Check balance and accounts.")
+                # We store the data in session_state so the button can use it
+                st.session_state['last_post'] = {
+                    'v_no': v_no, 'v_type': v_type, 'date': date, 'party': party, 
+                    'ref': ref, 'desc': desc, 'dr_acc': dr_acc, 'dr_amt': dr_amt, 
+                    'cr_acc': cr_acc, 'cr_amt': cr_amt
+                }
+                st.success(f"Successfully Posted {v_no}!")
+            except Exception as e:
+                st.error(f"Database Error: {e}")
+        else:
+            st.error("Error: Check balance and ensure accounts are selected.")
+
+    # 3. SHOW DOWNLOAD BUTTON (Only if a post was successful)
+    if 'last_post' in st.session_state:
+        lp = st.session_state['last_post']
+        pdf_data = generate_voucher_pdf(
+            lp['v_no'], lp['v_type'], lp['date'], lp['party'], 
+            lp['ref'], lp['desc'], lp['dr_acc'], lp['dr_amt'], 
+            lp['cr_acc'], lp['cr_amt']
+        )
+        
+        st.download_button(
+            label=f"🖨️ Download Voucher {lp['v_no']}",
+            data=pdf_data,
+            file_name=f"Voucher_{lp['v_no']}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+        
+        if st.button("Start New Entry"):
+            del st.session_state['last_post']
+            st.rerun()
 
 # --- MODULE: GENERAL LEDGER ---
 elif menu == "General Ledger":
