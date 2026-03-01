@@ -139,7 +139,7 @@ df = load_ledger()
 account_list = load_accounts()
 
 # --- 3. NAVIGATION ---
-menu = st.sidebar.radio("Main Menu", ["Entry Module", "General Ledger", "Trial Balance", "Profit & Loss", "Settings / Import"])
+menu = st.sidebar.radio("Main Menu", ["Entry Module", "General Ledger", "Trial Balance", "Profit & Loss", "Balance Sheet", "Settings / Import"])
 
 # ... (PDF function and database setup above) ...
 
@@ -468,3 +468,82 @@ elif menu == "Profit & Loss":
 
     except Exception as e:
         st.error(f"Error generating report: {e}. Ensure your Chart of Accounts has 'account_type' defined as Revenue or Expense.")
+elif menu == "Balance Sheet":
+    st.title("🏦 Classified Balance Sheet")
+    as_of_date = st.date_input("As of Date", value=datetime.now())
+    
+    try:
+        query = """
+            SELECT gl.*, coa.account_type 
+            FROM general_ledger gl
+            LEFT JOIN chart_of_accounts coa ON gl.account_name = coa.account_name
+        """
+        full_df = pd.read_sql(query, engine)
+        full_df['tr_date'] = pd.to_datetime(full_df['tr_date']).dt.date
+        report_df = full_df[full_df['tr_date'] <= as_of_date]
+        
+        if report_df.empty:
+            st.warning("No data found.")
+        else:
+            # Helper: Calculate net balance for a specific category
+            def get_cat_bal(cat_name, reverse=False):
+                sub = report_df[report_df['account_type'] == cat_name]
+                bal = sub.groupby('account_name').apply(lambda x: x['debit'].sum() - x['credit'].sum())
+                return bal * -1 if reverse else bal
+
+            # --- 1. ASSETS SECTION ---
+            cur_assets = get_cat_bal('Current Asset')
+            non_cur_assets = get_cat_bal('Non-Current Asset')
+            fixed_assets = get_cat_bal('Fixed Asset')
+            total_assets = cur_assets.sum() + non_cur_assets.sum() + fixed_assets.sum()
+
+            # --- 2. LIABILITIES SECTION ---
+            cur_liab = get_cat_bal('Current Liability', reverse=True)
+            non_cur_liab = get_cat_bal('Non-Current Liability', reverse=True)
+            accrued_exp = get_cat_bal('Accrued Expense', reverse=True)
+            total_liab = cur_liab.sum() + non_cur_liab.sum() + accrued_exp.sum()
+
+            # --- 3. EQUITY & PROFIT ---
+            equity = get_cat_bal('Equity', reverse=True)
+            rev = report_df[report_df['account_type'] == 'Revenue']
+            exp = report_df[report_df['account_type'] == 'Expense']
+            retained_earnings = (rev['credit'].sum() - rev['debit'].sum()) - (exp['debit'].sum() - exp['credit'].sum())
+            total_equity = equity.sum() + retained_earnings
+
+            # --- DISPLAY ---
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("🟢 ASSETS")
+                if not cur_assets.empty:
+                    st.write("**Current Assets**")
+                    st.table(cur_assets.rename("LKR"))
+                if not non_cur_assets.empty or not fixed_assets.empty:
+                    st.write("**Non-Current / Fixed Assets**")
+                    st.table(pd.concat([non_cur_assets, fixed_assets]).rename("LKR"))
+                st.metric("Total Assets", f"{total_assets:,.2f}")
+
+            with col2:
+                st.subheader("🔴 LIABILITIES")
+                if not cur_liab.empty or not accrued_exp.empty:
+                    st.write("**Current Liabilities & Accruals**")
+                    st.table(pd.concat([cur_liab, accrued_exp]).rename("LKR"))
+                if not non_cur_liab.empty:
+                    st.write("**Long-Term Liabilities**")
+                    st.table(non_cur_liab.rename("LKR"))
+                
+                st.subheader("🔵 EQUITY")
+                st.table(equity.rename("LKR"))
+                st.write(f"**Net Profit (Retained):** {retained_earnings:,.2f}")
+                
+                st.metric("Total Liab + Equity", f"{(total_liab + total_equity):,.2f}")
+
+            # FINAL CHECK
+            diff = round(total_assets - (total_liab + total_equity), 2)
+            if diff == 0:
+                st.success("✅ Statement of Financial Position is Balanced")
+            else:
+                st.error(f"❌ Mismatch: {diff:,.2f}")
+
+    except Exception as e:
+        st.error(f"Error: {e}")
