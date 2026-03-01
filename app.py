@@ -681,7 +681,7 @@ if menu == "Dashboard":
 
     except Exception as e:
         st.error(f"Dashboard Error: {e}")
-# --- MODULE: PAYROLL (SRI LANKAN COMPLIANT) ---
+# --- MODULE: PAYROLL (FINAL VERSION) ---
 elif menu == "Payroll Management":
     st.title("👥 Advanced Payroll Management")
     
@@ -692,33 +692,35 @@ elif menu == "Payroll Management":
         
         st.divider()
         st.subheader("➕ Earnings (Additions)")
-        col_earn1, col_earn2, col_earn3 = st.columns(3)
+        col_earn1, col_earn2, col_earn3, col_earn4 = st.columns(4)
         basic_sal = col_earn1.number_input("Basic Salary (LKR)", min_value=0.0, step=500.0)
         allowances = col_earn2.number_input("Fixed Allowances (LKR)", min_value=0.0)
-        overtime = col_earn3.number_input("Overtime (OT) Amount", min_value=0.0)
+        overtime = col_earn3.number_input("Overtime (OT)", min_value=0.0)
+        other_add = col_earn4.number_input("Other Additions", min_value=0.0)
         
-        gross_earnings = basic_sal + allowances + overtime
+        gross_earnings = basic_sal + allowances + overtime + other_add
         st.info(f"**Total Gross Earnings:** LKR {gross_earnings:,.2f}")
 
         st.divider()
         st.subheader("➖ Deductions")
-        col_ded1, col_ded2, col_ded3 = st.columns(3)
+        col_ded1, col_ded2, col_ded3, col_ded4, col_ded5 = st.columns(5)
         
-        # EPF/ETF is calculated ONLY on Basic Salary
-        epf_employee = col_ded1.number_input("Employee EPF (8% of Basic)", value=basic_sal * 0.08, disabled=True)
+        # EPF/ETF remains on Basic Salary only
+        epf_employee = col_ded1.number_input("EPF (8%)", value=basic_sal * 0.08, disabled=True)
         apit_tax = col_ded2.number_input("APIT (Tax)", min_value=0.0)
         stamp_duty = col_ded3.number_input("Stamp Duty", min_value=0.0, value=25.0 if gross_earnings > 25000 else 0.0)
+        other_ded = col_ded4.number_input("Other Deductions", min_value=0.0)
         
-        total_deductions = epf_employee + apit_tax + stamp_duty
+        total_deductions = epf_employee + apit_tax + stamp_duty + other_ded
         net_salary = gross_earnings - total_deductions
         
         st.metric("Net Salary Payable", f"LKR {net_salary:,.2f}")
 
-    # --- COMPANY COST COMPONENTS (Employer Contributions) ---
-    st.subheader("🏢 Employer Contributions (Company Cost)")
+    # --- COMPANY COST ---
+    st.subheader("🏢 Employer Contributions")
     ce1, ce2 = st.columns(2)
-    epf_employer = ce1.number_input("Employer EPF (12% of Basic)", value=basic_sal * 0.12, disabled=True)
-    etf_employer = ce2.number_input("Employer ETF (3% of Basic)", value=basic_sal * 0.03, disabled=True)
+    epf_employer = ce1.number_input("Employer EPF (12%)", value=basic_sal * 0.12, disabled=True)
+    etf_employer = ce2.number_input("Employer ETF (3%)", value=basic_sal * 0.03, disabled=True)
     
     total_payroll_cost = gross_earnings + epf_employer + etf_employer
     st.success(f"**Total Cost to Company:** LKR {total_payroll_cost:,.2f}")
@@ -728,27 +730,26 @@ elif menu == "Payroll Management":
         if net_salary > 0:
             v_no = get_next_v("Journal Entry")
             
-            # The Balanced Journal Entry
             payroll_entries = [
-                # 1. DEBIT: Total Gross Earnings (Basic + Allowances + OT)
+                # 1. DEBIT: Total Gross Earnings (Includes 'Other Additions')
                 {'voucher_no': v_no, 'tr_type': 'Journal Entry', 'tr_date': pay_date, 'party': emp_name,
                  'ref_no': 'PAYROLL', 'description': f'Gross Salary for {emp_name}',
                  'account_name': 'Salary Expense', 'debit': gross_earnings, 'credit': 0},
 
-                # 2. DEBIT: Employer Statutory Cost (EPF 12% + ETF 3%)
+                # 2. DEBIT: Employer Statutory Cost
                 {'voucher_no': v_no, 'tr_type': 'Journal Entry', 'tr_date': pay_date, 'party': 'Gov',
                  'ref_no': 'STAT_COST', 'description': 'Employer EPF/ETF Contribution',
                  'account_name': 'Salary Expense', 'debit': epf_employer + etf_employer, 'credit': 0},
 
-                # 3. CREDIT: Total EPF/ETF Payable (Liability for Employee 8% + Employer 12% + Employer 3%)
+                # 3. CREDIT: Combined EPF/ETF Liability
                 {'voucher_no': v_no, 'tr_type': 'Journal Entry', 'tr_date': pay_date, 'party': 'Gov',
-                 'ref_no': 'EPF_ETF_PAYABLE', 'description': 'Combined EPF/ETF Liability',
+                 'ref_no': 'EPF_ETF_PAYABLE', 'description': 'EPF/ETF Liability',
                  'account_name': 'Accrued Expense', 'debit': 0, 'credit': epf_employee + epf_employer + etf_employer},
 
-                # 4. CREDIT: APIT & Stamp Duty Payable
-                {'voucher_no': v_no, 'tr_type': 'Journal Entry', 'tr_date': pay_date, 'party': 'IRD',
-                 'ref_no': 'TAX_PAYABLE', 'description': 'Tax Liability (APIT/SD)',
-                 'account_name': 'Accrued Expense', 'debit': 0, 'credit': apit_tax + stamp_duty},
+                # 4. CREDIT: Tax & Other Deductions (APIT, Stamp Duty, and 'Other')
+                {'voucher_no': v_no, 'tr_type': 'Journal Entry', 'tr_date': pay_date, 'party': 'IRD/Misc',
+                 'ref_no': 'TAX_OTHER_PAYABLE', 'description': 'Tax and Misc Deductions',
+                 'account_name': 'Accrued Expense', 'debit': 0, 'credit': apit_tax + stamp_duty + other_ded},
 
                 # 5. CREDIT: Net Cash Out
                 {'voucher_no': v_no, 'tr_type': 'Journal Entry', 'tr_date': pay_date, 'party': emp_name,
@@ -758,11 +759,7 @@ elif menu == "Payroll Management":
             
             try:
                 pd.DataFrame(payroll_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
-                st.success(f"Payroll Posted Successfully! Voucher: {v_no}")
+                st.success(f"Payroll Posted! Voucher: {v_no}")
                 st.rerun()
             except Exception as e:
                 st.error(f"Post Failed: {e}")
-            except Exception as e:
-                st.error(f"Post Failed: {e}")
-        else:
-            st.error("Net Salary must be greater than zero.")
