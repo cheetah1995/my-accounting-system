@@ -167,13 +167,9 @@ if menu == "Settings / Import":
     st.title("⚙️ Admin Settings")
     
     col1, col2 = st.columns(2)
-    
     with col1:
         st.subheader("1. Download Template")
-        template_data = pd.DataFrame({
-            'account_name': ['Cash in Hand', 'Bank Account', 'Sales Revenue', 'Rent Expense'],
-            'account_type': ['Asset', 'Asset', 'Revenue', 'Expense']
-        })
+        template_data = pd.DataFrame({'account_name': ['Cash in Hand', 'Bank Account', 'Sales Revenue', 'Rent Expense'], 'account_type': ['Asset', 'Asset', 'Revenue', 'Expense']})
         template_csv = template_data.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Download CSV Template", data=template_csv, file_name="coa_template.csv", mime="text/csv")
     
@@ -189,41 +185,26 @@ if menu == "Settings / Import":
     st.divider()
     st.subheader("3. Upload Chart of Accounts")
     uploaded_file = st.file_uploader("Choose your formatted CSV file", type="csv")
-    
     if uploaded_file is not None:
         try:
             import_df = pd.read_csv(uploaded_file)
-        except UnicodeDecodeError:
-            uploaded_file.seek(0)
+        except:
             import_df = pd.read_csv(uploaded_file, encoding='latin-1')
         
-        import_df = import_df.dropna(subset=['account_name'])
-        st.write("Preview:", import_df.head())
-        
         if st.button("🚀 Push to Database"):
-            try:
-                import_df.to_sql('chart_of_accounts', engine, if_exists='append', index=False)
-                st.success(f"Imported {len(import_df)} accounts!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Import failed. Duplicate names might be present.")
-st.divider()
-st.subheader("💾 System Backup")
-st.write("Download a full copy of your General Ledger for safekeeping.")
+            import_df.to_sql('chart_of_accounts', engine, if_exists='append', index=False)
+            st.success("Imported!")
+            st.rerun()
 
-if st.button("📦 Generate Full Backup"):
-    try:
-        backup_df = pd.read_sql("SELECT * FROM general_ledger", engine)
-        csv_backup = backup_df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="⬇️ Download Backup (CSV)",
-            data=csv_backup,
-            file_name=f"EthicalTeas_Backup_{datetime.now().strftime('%Y-%m-%d')}.csv",
-            mime="text/csv"
-        )
-        st.success("Backup ready! Keep this file on an external drive.")
-    except Exception as e:
-        st.error(f"Backup failed: {e}")
+    st.divider()
+    st.subheader("💾 System Backup")
+    if st.button("📦 Generate Full Backup"):
+        try:
+            backup_df = pd.read_sql("SELECT * FROM general_ledger", engine)
+            st.download_button("⬇️ Download Backup (CSV)", data=backup_df.to_csv(index=False).encode('utf-8'), file_name=f"EthicalTeas_Backup_{datetime.now().date()}.csv", mime="text/csv")
+            st.success("Backup Ready!")
+        except Exception as e:
+            st.error(f"Backup Error: {e}")
 # --- MODULE: ENTRY MODULE ---
 elif menu == "Entry Module":
     st.title("⚖️ Multi-Row Transaction Entry")
