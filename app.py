@@ -296,10 +296,14 @@ elif menu == "Entry Module":
     m2.metric("Total CR", f"{total_cr:,.2f}")
     m3.metric("Balance Status", "Balanced" if diff == 0 else "Out of Balance", delta=diff, delta_color="inverse")
     
-    # 5. POSTING LOGIC
+  # 5. POSTING LOGIC
     if st.button("🚀 Post Transaction", use_container_width=True):
         if diff == 0 and total_dr > 0:
             final_entries = []
+            
+            # Identify who is logged in (default to 'System' if session state is missing)
+            current_user = st.session_state.get("username", "System")
+            
             for _, r in lines_df.iterrows():
                 if (r['debit'] > 0 or r['credit'] > 0) and r['account'] is not None:
                     final_entries.append({
@@ -311,10 +315,16 @@ elif menu == "Entry Module":
                         'description': r['description'] if r['description'] else desc,
                         'account_name': r['account'], 
                         'debit': r['debit'], 
-                        'credit': r['credit']
+                        'credit': r['credit'],
+                        # --- NEW COMMERCIAL COLUMNS ---
+                        'created_by': current_user,
+                        'created_at': datetime.now(),
+                        'is_void': 0,
+                        'void_reason': None
                     })
             
             try:
+                # Post to database
                 pd.DataFrame(final_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
                 
                 # Save PDF data BEFORE we clear the screen
@@ -323,10 +333,10 @@ elif menu == "Entry Module":
                     'party': party, 'ref': ref, 'desc': desc, 
                     'lines': final_entries
                 }
-                st.success(f"Successfully Posted {v_no}!")
+                st.success(f"Successfully Posted {v_no} by {current_user}!")
                 st.rerun()
             except Exception as e:
-                st.error(f"SQL Error: {e}")
+                st.error(f"SQL Error: {e}. Check if you ran the 'Upgrade Database' button in Settings.")
         else:
             st.error("Cannot post: Check if accounts are selected and Debits = Credits.")
 
