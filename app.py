@@ -268,78 +268,86 @@ elif menu == "Entry Module":
 
 # --- MODULE: GENERAL LEDGER ---
 elif menu == "General Ledger":
-    st.title("📖 General Ledger & Print History")
+    st.title("📖 General Ledger & Bulk Print")
     
     if df.empty:
         st.info("The ledger is empty.")
     else:
-        # Create a 'Select' column for checkboxes
-        st.subheader("Select Vouchers to Print")
+        # --- DATE FILTERS ---
+        st.subheader("Filter by Period")
+        c1, c2 = st.columns(2)
         
-        # Get unique vouchers for the selection list
-        unique_vouchers = df[['voucher_no', 'tr_date', 'party', 'tr_type']].drop_duplicates()
-        
-        # Display selection table
-        selected_rows = st.data_editor(
-            unique_vouchers,
-            column_config={"Select": st.column_config.CheckboxColumn(default=False)},
-            disabled=["voucher_no", "tr_date", "party", "tr_type"],
-            use_container_width=True,
-            key="bulk_print_editor"
-        )
-        
-        # Filter for the ones the user checked (Data Editor returns the whole DF)
-        # Note: We assume the user clicks the 'Select' column if you add it, 
-        # but for simplicity, let's use a multi-select box:
-        
-        to_print = st.multiselect("Pick Vouchers to Export", options=unique_vouchers['voucher_no'].tolist())
-        
-        if st.button("🖨️ Generate Bulk PDF"):
-            if not to_print:
-                st.warning("Please select at least one voucher.")
-            else:
-                from PyPDF2 import PdfWriter, PdfReader
-                combined_pdf = PdfWriter()
-                
-                for v_no in to_print:
-                    # Get the data for this specific voucher
-                    v_data = df[df['voucher_no'] == v_no]
-                    # Since one voucher has two rows (DR/CR), we pick the details from the first row
-                    row_dr = v_data[v_data['debit'] > 0].iloc[0]
-                    row_cr = v_data[v_data['credit'] > 0].iloc[0]
+        # Default to the current month's range
+        start_date = c1.date_input("Start Date", value=datetime(datetime.now().year, datetime.now().month, 1))
+        end_date = c2.date_input("End Date", value=datetime.now())
+
+        # Filter the main dataframe based on user selection
+        # Note: Ensure tr_date is in datetime format for comparison
+        df['tr_date'] = pd.to_datetime(df['tr_date']).dt.date
+        mask = (df['tr_date'] >= start_date) & (df['tr_date'] <= end_date)
+        filtered_df = df.loc[mask]
+
+        if filtered_df.empty:
+            st.warning("No transactions found for this date range.")
+        else:
+            # --- BULK PRINT SECTION ---
+            unique_vouchers = filtered_df[['voucher_no', 'tr_date', 'party', 'tr_type']].drop_duplicates()
+            
+            st.markdown("---")
+            st.subheader("🖨️ Bulk Export")
+            to_print = st.multiselect(
+                f"Select Vouchers to Print ({len(unique_vouchers)} found in range)", 
+                options=unique_vouchers['voucher_no'].tolist()
+            )
+            
+            if st.button("Generate Combined PDF"):
+                if not to_print:
+                    st.warning("Please select at least one voucher.")
+                else:
+                    from PyPDF2 import PdfWriter, PdfReader
+                    combined_pdf = PdfWriter()
                     
-                    pdf_buffer = generate_voucher_pdf(
-                        v_no=v_no,
-                        v_type=row_dr['tr_type'],
-                        date=row_dr['tr_date'],
-                        party=row_dr['party'],
-                        ref=row_dr['ref_no'],
-                        desc=row_dr['description'],
-                        dr_acc=row_dr['account_name'],
-                        dr_amt=row_dr['debit'],
-                        cr_acc=row_cr['account_name'],
-                        cr_amt=row_cr['credit']
+                    for v_no in to_print:
+                        v_data = filtered_df[filtered_df['voucher_no'] == v_no]
+                        
+                        # Extract DR and CR rows
+                        dr_rows = v_data[v_data['debit'] > 0]
+                        cr_rows = v_data[v_data['credit'] > 0]
+                        
+                        if not dr_rows.empty and not cr_rows.empty:
+                            row_dr = dr_rows.iloc[0]
+                            row_cr = cr_rows.iloc[0]
+                            
+                            pdf_buffer = generate_voucher_pdf(
+                                v_no=v_no,
+                                v_type=row_dr['tr_type'],
+                                date=row_dr['tr_date'],
+                                party=row_dr['party'],
+                                ref=row_dr['ref_no'],
+                                desc=row_dr['description'],
+                                dr_acc=row_dr['account_name'],
+                                dr_amt=row_dr['debit'],
+                                cr_acc=row_cr['account_name'],
+                                cr_amt=row_cr['credit']
+                            )
+                            
+                            reader = PdfReader(pdf_buffer)
+                            combined_pdf.add_page(reader.pages[0])
+                    
+                    final_buffer = io.BytesIO()
+                    combined_pdf.write(final_buffer)
+                    final_buffer.seek(0)
+                    
+                    st.download_button(
+                        label=f"📥 Download {len(to_print)} Vouchers (PDF)",
+                        data=final_buffer,
+                        file_name=f"Vouchers_{start_date}_to_{end_date}.pdf",
+                        mime="application/pdf"
                     )
-                    
-                    reader = PdfReader(pdf_buffer)
-                    combined_pdf.add_page(reader.pages[0])
-                
-                # Output the combined PDF
-                final_buffer = io.BytesIO()
-                combined_pdf.write(final_buffer)
-                final_buffer.seek(0)
-                
-                st.download_button(
-                    label=f"📥 Download {len(to_print)} Vouchers in One PDF",
-                    data=final_buffer,
-                    file_name="bulk_vouchers.pdf",
-                    mime="application/pdf"
-                )
 
-        st.divider()
-        st.subheader("Full Transaction History")
-        st.dataframe(df, use_container_width=True)
-
+            st.markdown("---")
+            st.subheader("Filtered Ledger View")
+            st.dataframe(filtered_df, use_container_width=True)
 # --- MODULE: TRIAL BALANCE ---
 elif menu == "Trial Balance":
     st.title("📊 Trial Balance")
