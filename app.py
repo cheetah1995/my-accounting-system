@@ -139,7 +139,7 @@ df = load_ledger()
 account_list = load_accounts()
 
 # --- 3. NAVIGATION ---
-menu = st.sidebar.radio("Main Menu", ["Dashboard", "Entry Module", "General Ledger", "Trial Balance", "Profit & Loss", "Balance Sheet", "Account Statement", "Settings / Import"])
+menu = st.sidebar.radio("Main Menu", ["Dashboard", "Entry Module", "Payroll Management", "General Ledger", "Trial Balance", "Profit & Loss", "Balance Sheet", "Account Statement", "Settings / Import"])
 # ... (PDF function and database setup above) ...
 
 # --- MODULE: SETTINGS / IMPORT ---
@@ -681,3 +681,52 @@ if menu == "Dashboard":
 
     except Exception as e:
         st.error(f"Dashboard Error: {e}")
+# --- MODULE: PAYROLL ---
+elif menu == "Payroll Management":
+    st.title("👥 Employee Payroll Journal")
+    
+    with st.container(border=True):
+        c1, c2 = st.columns(2)
+        emp_name = c1.text_input("Employee Name/Category", placeholder="e.g., Estate Staff - Feb 2026")
+        pay_date = c2.date_input("Payment Date", value=datetime.now())
+        
+        c3, c4, c5 = st.columns(3)
+        gross_salary = c3.number_input("Gross Salary (LKR)", min_value=0.0, step=100.0)
+        epf_employee = c4.number_input("Employee EPF (8%)", value=gross_salary * 0.08, disabled=True)
+        net_payable = c5.metric("Net Salary to Pay", f"{gross_salary - epf_employee:,.2f}")
+
+    st.subheader("Employer Contributions (Company Cost)")
+    ce1, ce2 = st.columns(2)
+    epf_employer = ce1.number_input("Employer EPF (12%)", value=gross_salary * 0.12, disabled=True)
+    etf_employer = ce2.number_input("Employer ETF (3%)", value=gross_salary * 0.03, disabled=True)
+    
+    total_cost = gross_salary + epf_employer + etf_employer
+    st.info(f"💡 Total Cost to Company for this entry: LKR {total_cost:,.2f}")
+
+    if st.button("🚀 Post Payroll to Ledger", use_container_width=True):
+        if gross_salary > 0:
+            v_no = get_next_v("Journal Entry")
+            # We create a multi-row balanced journal entry
+            payroll_entries = [
+                # 1. Debit Salary Expense (The full cost)
+                {'voucher_no': v_no, 'tr_type': 'Journal Entry', 'tr_date': pay_date, 'party': emp_name,
+                 'ref_no': 'PAYROLL', 'description': f'Basic Salary for {emp_name}',
+                 'account_name': 'Salary Expense', 'debit': gross_salary, 'credit': 0},
+                
+                # 2. Credit EPF Payable (Liability to be paid to gov later)
+                {'voucher_no': v_no, 'tr_type': 'Journal Entry', 'tr_date': pay_date, 'party': 'Gov',
+                 'ref_no': 'EPF', 'description': f'EPF Payable (Emp+Empr)',
+                 'account_name': 'Accrued Expense', 'debit': 0, 'credit': epf_employee + epf_employer},
+                
+                # 3. Credit Cash/Bank (The actual money leaving)
+                {'voucher_no': v_no, 'tr_type': 'Journal Entry', 'tr_date': pay_date, 'party': emp_name,
+                 'ref_no': 'CASH', 'description': f'Net Pay to {emp_name}',
+                 'account_name': 'Cash in Hand', 'debit': 0, 'credit': gross_salary - epf_employee}
+            ]
+            
+            try:
+                pd.DataFrame(payroll_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
+                st.success(f"Payroll for {emp_name} posted under {v_no}!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
