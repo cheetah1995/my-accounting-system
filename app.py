@@ -1,13 +1,22 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 
 st.set_page_config(page_title="Universal Accounting System", layout="wide")
 
-# 1. DATABASE CONNECTION
-conn = st.connection("gsheets", type=GSheetsConnection)
-df = conn.read(ttl="0")
+# --- SIMPLIFIED CONNECTION ---
+# Replace the ID below with your actual Google Sheet ID
+SHEET_ID = "YOUR_ACTUAL_ID_HERE" 
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
+
+try:
+    df = pd.read_csv(SHEET_URL)
+except Exception as e:
+    st.error("Cannot connect to Google Sheets. Please ensure the sheet is shared as 'Anyone with the link can view'.")
+    df = pd.DataFrame(columns=['Voucher_No', 'Type', 'Date', 'Party', 'Ref_No', 'Description', 'Account', 'Debit', 'Credit'])
+# -----------------------------
+
+# ... (The rest of your code for get_next_voucher and the forms remains the same)
 
 # 2. ENHANCED AUTO-GENERATION LOGIC
 def get_next_voucher(df, prefix):
