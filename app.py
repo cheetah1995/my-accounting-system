@@ -477,7 +477,7 @@ with st.expander("Dangerous: Database Reset"):
 
     # ... rest of your settings code ...
 st.subheader("Import Chart of Accounts")
-    up_file = st.file_uploader("Upload CSV", type="csv")
+up_file = st.file_uploader("Upload CSV", type="csv")
     if up_file:
         import_df = pd.read_csv(up_file).dropna(subset=['account_name'])
         st.dataframe(import_df.head())
