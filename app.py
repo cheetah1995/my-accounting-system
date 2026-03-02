@@ -171,7 +171,7 @@ if st.session_state.get("role") == "Owner":
     menu_options = [
         "Dashboard", "Invoicing", "Entry Module", "Payroll Management", 
         "General Ledger", "Trial Balance", "Profit & Loss", 
-        "Balance Sheet", "Account Statement", "Settings / Import", "Currency Transfers", "Void & Audit"
+        "Balance Sheet", "Account Statement", "Settings / Import", "Void & Audit", "Currency Transfers", 
     ]
 else:
     # Staff only sees operational tools
@@ -1081,6 +1081,14 @@ elif menu == "Currency Transfers":
 elif menu == "Void & Audit":
     st.title("🛡️ Void & Audit Control")
     
+    # Check if the database has the void_reason column, add it if not
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE general_ledger ADD COLUMN void_reason TEXT"))
+            conn.commit()
+    except:
+        pass # Column already exists
+
     tab1, tab2 = st.tabs(["🚫 Void a Transaction", "📜 Voided History"])
 
     with tab1:
@@ -1088,68 +1096,40 @@ elif menu == "Void & Audit":
         v_search = st.text_input("🔍 Enter Voucher Number", placeholder="e.g., PV-1005")
 
         if v_search:
-            # Load specific voucher details
-            query = text("""
-                SELECT tr_date, account_name, party, description, currency, base_amount, debit, credit, is_void 
-                FROM general_ledger 
-                WHERE voucher_no = :v
-            """)
-            
+            query = text("SELECT * FROM general_ledger WHERE voucher_no = :v")
             with engine.connect() as conn:
                 v_df = pd.read_sql(query, conn, params={"v": v_search})
 
             if v_df.empty:
-                st.warning(f"No records found for Voucher: {v_search}")
+                st.warning(f"No records found for: {v_search}")
             else:
-                # Review Table
                 if v_df['is_void'].iloc[0] == 1:
-                    st.error("🚨 This transaction is ALREADY VOIDED.")
-                    st.table(v_df[['tr_date', 'account_name', 'debit', 'credit']])
+                    st.error("🚨 This transaction is already VOIDED.")
+                    st.dataframe(v_df[['tr_date', 'account_name', 'debit', 'credit']])
                 else:
-                    st.info("Please review the entries below before finalizing the void.")
+                    st.info("Review entries below:")
                     st.table(v_df[['account_name', 'description', 'debit', 'credit']])
                     
-                    # Void Action Logic
                     with st.container(border=True):
-                        reason = st.text_area("Reason for Voiding", placeholder="e.g., Data entry error / Wrong Currency")
-                        confirm = st.checkbox("Confirm: I want to permanently void this transaction.")
+                        reason = st.text_area("Reason for Voiding")
+                        confirm = st.checkbox("I confirm this action")
                         
                         if st.button("🚫 Finalize Void", type="primary", disabled=not confirm, use_container_width=True):
                             if not reason:
                                 st.warning("Please provide a reason.")
                             else:
-                                try:
-                                    with engine.connect() as conn:
-                                        # Update the ledger
-                                        conn.execute(
-                                            text("UPDATE general_ledger SET is_void = 1, void_reason = :r WHERE voucher_no = :v"),
-                                            {"r": reason, "v": v_search}
-                                        )
-                                        conn.commit()
-                                    st.success(f"Voucher {v_search} successfully voided.")
-                                    st.balloons()
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Error: {e}")
+                                with engine.connect() as conn:
+                                    conn.execute(
+                                        text("UPDATE general_ledger SET is_void = 1, void_reason = :r WHERE voucher_no = :v"),
+                                        {"r": reason, "v": v_search}
+                                    )
+                                    conn.commit()
+                                st.success("Voided!")
+                                st.rerun()
 
     with tab2:
-        st.subheader("Audit Trail: Voided Transactions")
-        # Load all transactions marked as void
-        history_query = text("""
-            SELECT tr_date, voucher_no, account_name, party, debit, credit, void_reason 
-            FROM general_ledger 
-            WHERE is_void = 1
-            ORDER BY tr_date DESC
-        """)
-        
+        st.subheader("Audit Trail")
+        history_query = text("SELECT tr_date, voucher_no, account_name, debit, credit, void_reason FROM general_ledger WHERE is_void = 1")
         with engine.connect() as conn:
-            history_df = pd.read_sql(history_query, conn)
-            
-        if history_df.empty:
-            st.info("No voided transactions found in the system.")
-        else:
-            st.dataframe(history_df, use_container_width=True, hide_index=True)
-            
-            # Export Void History for the Accountant
-            csv_void = history_df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Void History (CSV)", csv_void, "void_audit_trail.csv", "text/csv")
+            h_df = pd.read_sql(history_query, conn)
+        st.dataframe(h_df, use_container_width=True, hide_index=True)
