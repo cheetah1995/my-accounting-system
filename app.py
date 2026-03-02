@@ -175,9 +175,16 @@ else:
 
 menu = st.sidebar.radio("Main Menu", menu_options)
 
-# 2. THE ENTRY MODULE
+# --- START OF MODULE LOGIC ---
+
+# 1. SEARCH FOR THIS LINE. If it says 'elif', change it to 'if'
+if menu == "Dashboard":
+    st.title("📊 Business Dashboard")
+    st.write(f"Welcome back, {st.session_state.get('username', 'User')}!")
+
+# 2. NOW the Entry Module can be an 'elif'
 elif menu == "Entry Module":
-    st.title("⚖️ Multi-Row Transaction Entry")
+    st.title("⚖️ Multi-Row Transaction Entry"))
     
     if not account_list:
         st.warning("Please import Chart of Accounts first.")
