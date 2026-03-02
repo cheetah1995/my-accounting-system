@@ -458,14 +458,15 @@ elif menu == "Settings / Import":
                 # 1. Get current columns in the ledger
                 existing_cols = pd.read_sql("SELECT * FROM general_ledger LIMIT 0", engine).columns.tolist()
                 
-                # 2. Define EVERY column needed for Multi-Currency and Invoicing
-                # This list now includes 'created_by' and 'is_void'
+                # 2. Comprehensive column list to prevent errors in Invoicing, Receipts, and Transfers
                 updates = [
                     ("currency", "TEXT DEFAULT 'LKR'"),
                     ("exchange_rate", "NUMERIC DEFAULT 1.0"),
                     ("base_amount", "NUMERIC DEFAULT 0.0"),
                     ("created_by", "TEXT"),
                     ("is_void", "INTEGER DEFAULT 0"),
+                    ("void_reason", "TEXT"),                 # NEW: Required for Receipts/Voiding
+                    ("ref_no", "TEXT"),                      # NEW: Required for Invoice References
                     ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
                 ]
                 
@@ -481,7 +482,7 @@ elif menu == "Settings / Import":
                 engine.dispose()
                 
                 if added_any:
-                    st.success("✅ Database synchronization successful! New columns are ready.")
+                    st.success("✅ Database synchronization successful! New columns (including void_reason) are ready.")
                     st.balloons()
                 else:
                     st.success("✅ Database is already fully synchronized.")
