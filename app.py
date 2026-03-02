@@ -163,7 +163,21 @@ def get_next_v(v_type):
 df = load_ledger()
 account_list = load_accounts()
 
-# --- 3. NAVIGATION & MODULE LOGIC ---
+# --- 3. NAVIGATION DEFINITION ---
+
+# Ensure this logic comes FIRST
+if st.session_state.get("role") == "Owner":
+    # Owner sees everything
+    menu_options = [
+        "Dashboard", "Invoicing", "Entry Module", "Payroll Management", 
+        "General Ledger", "Trial Balance", "Profit & Loss", 
+        "Balance Sheet", "Account Statement", "Settings / Import", "Currency Transfers"
+    ]
+else:
+    # Staff only sees operational tools
+    menu_options = ["Entry Module", "Invoicing", "General Ledger", "Account Statement", "Currency Transfers", "Trial Balance"]
+
+# NOW you can call the sidebar radio
 menu = st.sidebar.radio("Main Menu", menu_options)
 
 # 1. THE ANCHOR (This MUST be 'if')
