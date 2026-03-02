@@ -171,7 +171,7 @@ if st.session_state.get("role") == "Owner":
     menu_options = [
         "Dashboard", "Invoicing", "Entry Module", "Payroll Management", 
         "General Ledger", "Trial Balance", "Profit & Loss", 
-        "Balance Sheet", "Account Statement", "Settings / Import", "Void & Audit", "Currency Transfers", 
+        "Balance Sheet", "Account Statement", "Settings / Import", "Currency Transfers"
     ]
 else:
     # Staff only sees operational tools
@@ -192,56 +192,12 @@ if menu == "Dashboard":
     c3.metric("User Role", st.session_state.get("role", "Staff"))
 
 # 2. THE ENTRY MODULE
-@st.fragment
-def entry_module_fragment():
+elif menu == "Entry Module":
     st.title("⚖️ Multi-Row Transaction Entry")
     
-    # 2. VOUCHER HEADER
-    with st.container(border=True):
-        c1, c2, c3 = st.columns(3)
-        v_type = c1.selectbox("Type", ["Payment", "Receipt", "Journal", "Sales"])
-        v_no = get_next_v(v_type) # Your existing function
-        date = c2.date_input("Date", datetime.now())
-        currency = c3.selectbox("Currency", ["LKR", "USD", "EUR"])
-
-    # 3. DATA ENTRY TABLE (The part that used to be slow)
-    # We use a unique key and disable some automatic updates
-    edited_df = st.data_editor(
-        default_rows, 
-        column_config={
-            "account": st.column_config.SelectboxColumn("Account", options=account_list),
-            "debit": st.column_config.NumberColumn(f"Debit", format="%.2f"),
-            "credit": st.column_config.NumberColumn(f"Credit", format="%.2f"),
-        },
-        num_rows="dynamic",
-        key="main_entry_table" # Keeping a static key prevents jumping
-    )
-
-    # 4. POSTING BUTTON
-    if st.button("🚀 Post Transaction", use_container_width=True):
-        # ... (Your existing posting logic here) ...
-        st.success("Posted!")
-        st.rerun() # Only rerun the whole app once the job is DONE
-
-# --- 5. MODULE ROUTING ---
-
-# 1. First, check for Home or Dashboard
-if menu == "Dashboard":
-    st.title("📊 Dashboard")
-    # your dashboard code here...
-
-# 2. Then use ELIF for everything else
-elif menu == "Entry Module":
-    # Call your fragment function here
-    entry_module_fragment()
-
-elif menu == "Account Statement":
-    # your statement code...
-    pass
-
-elif menu == "Void & Audit":
-    # your void code...
-    pass
+    if not account_list:
+        st.warning("Please import Chart of Accounts first in Settings.")
+        st.stop()
     
     # 1. GENERATE VOUCHER NUMBER
     v_type = st.selectbox("Transaction Type", ["Payment Voucher", "Cash Receipt", "Sales Entry", "Journal Entry"])
@@ -1085,60 +1041,3 @@ elif menu == "Currency Transfers":
                 
             except Exception as e:
                 st.error("❌ Error: The database structure might not be ready. Please go to 'Settings' and click 'Synchronize Database Columns' first.")
-
-# --- MODULE: VOID & AUDIT CONTROL ---
-elif menu == "Void & Audit":
-    st.title("🛡️ Void & Audit Control")
-    
-    # Check if the database has the void_reason column, add it if not
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE general_ledger ADD COLUMN void_reason TEXT"))
-            conn.commit()
-    except:
-        pass # Column already exists
-
-    tab1, tab2 = st.tabs(["🚫 Void a Transaction", "📜 Voided History"])
-
-    with tab1:
-        st.subheader("Search & Review")
-        v_search = st.text_input("🔍 Enter Voucher Number", placeholder="e.g., PV-1005")
-
-        if v_search:
-            query = text("SELECT * FROM general_ledger WHERE voucher_no = :v")
-            with engine.connect() as conn:
-                v_df = pd.read_sql(query, conn, params={"v": v_search})
-
-            if v_df.empty:
-                st.warning(f"No records found for: {v_search}")
-            else:
-                if v_df['is_void'].iloc[0] == 1:
-                    st.error("🚨 This transaction is already VOIDED.")
-                    st.dataframe(v_df[['tr_date', 'account_name', 'debit', 'credit']])
-                else:
-                    st.info("Review entries below:")
-                    st.table(v_df[['account_name', 'description', 'debit', 'credit']])
-                    
-                    with st.container(border=True):
-                        reason = st.text_area("Reason for Voiding")
-                        confirm = st.checkbox("I confirm this action")
-                        
-                        if st.button("🚫 Finalize Void", type="primary", disabled=not confirm, use_container_width=True):
-                            if not reason:
-                                st.warning("Please provide a reason.")
-                            else:
-                                with engine.connect() as conn:
-                                    conn.execute(
-                                        text("UPDATE general_ledger SET is_void = 1, void_reason = :r WHERE voucher_no = :v"),
-                                        {"r": reason, "v": v_search}
-                                    )
-                                    conn.commit()
-                                st.success("Voided!")
-                                st.rerun()
-
-    with tab2:
-        st.subheader("Audit Trail")
-        history_query = text("SELECT tr_date, voucher_no, account_name, debit, credit, void_reason FROM general_ledger WHERE is_void = 1")
-        with engine.connect() as conn:
-            h_df = pd.read_sql(history_query, conn)
-        st.dataframe(h_df, use_container_width=True, hide_index=True)
