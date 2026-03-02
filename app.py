@@ -672,7 +672,6 @@ elif menu == "Balance Sheet":
 
     except Exception as e:
         st.error(f"Error: {e}")
-
 # --- MODULE: ACCOUNT STATEMENT ---
 elif menu == "Account Statement":
     st.title("📑 Account Statement")
