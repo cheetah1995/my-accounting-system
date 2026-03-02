@@ -855,70 +855,86 @@ elif menu == "Payroll Management":
                 st.rerun()
             except Exception as e:
                 st.error(f"Post Failed: {e}")
-# --- MODULE: INVOICING (Buyer-Linked) ---
+# --- MODULE: INVOICING (Buyer-Linked & Multi-Currency) ---
 elif menu == "Invoicing":
     st.title("📄 Credit Sales Invoice")
     
     try:
-        # 1. Pull only Buyers (Accounts Receivable) for the Debit side
-        buyer_accounts = pd.read_sql(
-            "SELECT account_name FROM chart_of_accounts WHERE account_type = 'Accounts Receivable'", 
-            engine
-        )['account_name'].tolist()
-        
-        # 2. Pull Sales/Revenue categories for the Credit side
-        revenue_accounts = pd.read_sql(
-            "SELECT account_name FROM chart_of_accounts WHERE account_type = 'Revenue'", 
-            engine
-        )['account_name'].tolist()
+        # 1. Pull Accounts from DB
+        buyer_accounts = pd.read_sql("SELECT account_name FROM chart_of_accounts WHERE account_type = 'Accounts Receivable'", engine)['account_name'].tolist()
+        revenue_accounts = pd.read_sql("SELECT account_name FROM chart_of_accounts WHERE account_type = 'Revenue'", engine)['account_name'].tolist()
     except Exception as e:
-        st.error(f"Error loading Chart of Accounts: {e}")
+        st.error(f"Error loading accounts: {e}")
         st.stop()
 
-    # --- INVOICE INPUTS ---
-    c1, c2 = st.columns(2)
+    # --- INVOICE HEADER ---
+    c1, c2, c3 = st.columns(3)
     inv_no = c1.text_input("Invoice #", value=f"INV-{datetime.now().strftime('%m%d%H%M')}")
     inv_date = c2.date_input("Date", value=datetime.now())
+    currency = c3.selectbox("Currency", ["LKR", "USD", "EUR"])
 
+    # --- MAPPING ---
     st.info("🎯 **Transaction Mapping**")
     col_a, col_b = st.columns(2)
-    
-    # Selecting the SPECIFIC Buyer from your Chart of Accounts
     selected_buyer = col_a.selectbox("Select Buyer (Debit Account)", options=buyer_accounts)
-    # Selecting the Sales category
     selected_revenue = col_b.selectbox("Select Sales Type (Credit Account)", options=revenue_accounts)
 
-    # --- PRICING ---
+    # --- FX & PRICING ---
     st.divider()
-    curr_col, val_col = st.columns([1, 2])
-    currency = curr_col.selectbox("Currency", ["LKR", "USD", "EUR"])
-    total_val = val_col.number_input(f"Invoice Total ({currency})", min_value=0.0)
-    description = st.text_input("Remarks", value=f"Tea Sale in {currency}")
+    p1, p2, p3 = st.columns(3)
+    
+    # Auto-set exchange rate based on currency
+    default_rate = 1.0
+    if currency == "USD": default_rate = 309.44
+    elif currency == "EUR": default_rate = 364.92
+    
+    amount_fx = p1.number_input(f"Amount in {currency}", min_value=0.0)
+    ex_rate = p2.number_input("Exchange Rate (1 FX = ? LKR)", min_value=1.0, value=default_rate if currency != "LKR" else 1.0, disabled=(currency == "LKR"))
+    
+    lkr_total = round(amount_fx * ex_rate, 2)
+    p3.metric("Total Value (LKR)", f"Rs. {lkr_total:,.2f}")
+    
+    description = st.text_input("Remarks", value=f"Sale to {selected_buyer} in {currency}")
 
     # --- POSTING LOGIC ---
-    if st.button("🚀 Issue Invoice", use_container_width=True):
-        if total_val > 0 and selected_buyer and selected_revenue:
-            # Entry 1: Debit the Buyer (They owe you money)
-            # Entry 2: Credit Sales (You earned revenue)
-            invoice_entries = [
-                {
-                    'voucher_no': inv_no, 'tr_type': 'Sales', 'tr_date': inv_date,
-                    'party': selected_buyer, 'ref_no': currency, 'description': description,
-                    'account_name': selected_buyer, 'debit': total_val, 'credit': 0,
-                    'created_by': st.session_state.get("username", "Admin"),
-                    'created_at': datetime.now(), 'is_void': 0
-                },
-                {
-                    'voucher_no': inv_no, 'tr_type': 'Sales', 'tr_date': inv_date,
-                    'party': selected_buyer, 'ref_no': currency, 'description': description,
-                    'account_name': selected_revenue, 'debit': 0, 'credit': total_val,
-                    'created_by': st.session_state.get("username", "Admin"),
-                    'created_at': datetime.now(), 'is_void': 0
-                }
-            ]
-            pd.DataFrame(invoice_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
-            st.success(f"Invoice Posted! {selected_buyer} now has a receivable balance of {total_val}.")
-
+    if st.button("🚀 Issue & Post Invoice", use_container_width=True):
+        if amount_fx > 0 and selected_buyer and selected_revenue:
+            try:
+                # Entries for the General Ledger (Must match the new table structure)
+                invoice_entries = [
+                    {
+                        'voucher_no': inv_no, 'tr_type': 'Sales', 'tr_date': inv_date,
+                        'party': selected_buyer, 'ref_no': currency, 'description': description,
+                        'account_name': selected_buyer, 
+                        'debit': lkr_total, 'credit': 0,           # Local Currency for Books
+                        'currency': currency,                      # Foreign Currency Label
+                        'exchange_rate': ex_rate,                  # Conversion Rate
+                        'base_amount': amount_fx,                  # Original Foreign Amount
+                        'created_by': st.session_state.get("username", "Admin"),
+                        'is_void': 0
+                    },
+                    {
+                        'voucher_no': inv_no, 'tr_type': 'Sales', 'tr_date': inv_date,
+                        'party': selected_buyer, 'ref_no': currency, 'description': description,
+                        'account_name': selected_revenue, 
+                        'debit': 0, 'credit': lkr_total,           # Local Currency for Books
+                        'currency': currency, 
+                        'exchange_rate': ex_rate, 
+                        'base_amount': amount_fx,
+                        'created_by': st.session_state.get("username", "Admin"),
+                        'is_void': 0
+                    }
+                ]
+                
+                pd.DataFrame(invoice_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
+                st.success(f"✅ Invoice {inv_no} Posted! {selected_buyer} debited Rs. {lkr_total:,.2f}")
+                st.balloons()
+                
+            except Exception as e:
+                st.error("❌ Posting Error: Ensure you've clicked 'Synchronize Database Columns' in Settings.")
+                st.info(f"Technical Detail: {e}")
+        else:
+            st.warning("Please enter a valid amount and select all accounts.")
 # --- MODULE: CURRENCY TRANSFERS & PAYMENTS ---
 elif menu == "Currency Transfers":
     st.title("💱 Multi-Currency FX Handler")
