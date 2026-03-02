@@ -193,7 +193,8 @@ elif menu == "Entry Module":
     if "editor_key" not in st.session_state:
         st.session_state.editor_key = 0
 
-    default_rows = [{"account": None, "description": "", "amount": 0.0, "type": "Debit"}] for _ in range(2)]
+   # Corrected Line 196:
+    default_rows = [{"account": None, "description": "", "amount": 0.0, "type": "Debit"} for _ in range(2)]
 
     # 3. HEADER FORM (Extended for Currency)
     with st.container(border=True):
