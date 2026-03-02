@@ -672,6 +672,7 @@ elif menu == "Balance Sheet":
 
     except Exception as e:
         st.error(f"Error: {e}")
+
 # --- MODULE: ACCOUNT STATEMENT ---
 elif menu == "Account Statement":
     st.title("📑 Account Statement")
@@ -1041,3 +1042,4 @@ elif menu == "Currency Transfers":
                 
             except Exception as e:
                 st.error("❌ Error: The database structure might not be ready. Please go to 'Settings' and click 'Synchronize Database Columns' first.")
+
