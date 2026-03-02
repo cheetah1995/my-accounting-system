@@ -448,7 +448,7 @@ elif menu == "Trial Balance":
 elif menu == "Settings / Import":
     st.title("⚙️ System Settings")
 
- with engine.connect() as conn:
+with engine.connect() as conn:
     # We check if columns exist before adding them to avoid errors
     existing_columns = pd.read_sql("SELECT * FROM general_ledger LIMIT 0", engine).columns.tolist()
     
