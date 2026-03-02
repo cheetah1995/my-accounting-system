@@ -467,7 +467,7 @@ with engine.connect() as conn:
 st.success("Database structure is now synchronized with the Multi-Currency module.")
     # ... rest of your settings code ...
     
-    with st.expander("Dangerous: Database Reset"):
+with st.expander("Dangerous: Database Reset"):
         if st.button("🗑️ Wipe All Chart of Accounts"):
             with engine.connect() as conn:
                 conn.execute(text("TRUNCATE TABLE chart_of_accounts RESTART IDENTITY CASCADE"))
