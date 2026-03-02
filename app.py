@@ -448,50 +448,80 @@ elif menu == "Trial Balance":
 elif menu == "Settings / Import":
     st.title("⚙️ System Settings")
 
+    # --- SECTION 1: DATABASE MAINTENANCE ---
     st.subheader("🛠️ Database Maintenance")
+    st.info("Use this to update the database structure if you encounter 'Missing Column' errors.")
+    
     if st.button("🔄 Force Synchronize All Columns"):
         try:
             with engine.connect() as conn:
-                # Get current state
+                # 1. Get current columns in the ledger
                 existing_cols = pd.read_sql("SELECT * FROM general_ledger LIMIT 0", engine).columns.tolist()
                 
-                # Define every column the Multi-Currency module needs
+                # 2. Define EVERY column needed for Multi-Currency and Invoicing
+                # This list now includes 'created_by' and 'is_void'
                 updates = [
                     ("currency", "TEXT DEFAULT 'LKR'"),
                     ("exchange_rate", "NUMERIC DEFAULT 1.0"),
                     ("base_amount", "NUMERIC DEFAULT 0.0"),
+                    ("created_by", "TEXT"),
+                    ("is_void", "INTEGER DEFAULT 0"),
                     ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
                 ]
                 
+                added_any = False
                 for col_name, col_type in updates:
                     if col_name not in existing_cols:
                         conn.execute(text(f"ALTER TABLE general_ledger ADD COLUMN {col_name} {col_type}"))
-                        st.info(f"Added column: {col_name}")
+                        st.info(f"Successfully added column: {col_name}")
+                        added_any = True
                 
                 conn.commit()
-                # Crucial: This kills the old connection so the app MUST see the new columns
+                # 3. Refresh connection pool
                 engine.dispose()
-                st.success("✅ Database Sync Complete. Please refresh your browser (F5) now.")
+                
+                if added_any:
+                    st.success("✅ Database synchronization successful! New columns are ready.")
+                    st.balloons()
+                else:
+                    st.success("✅ Database is already fully synchronized.")
+                    
         except Exception as e:
             st.error(f"Sync Error: {e}")
 
     st.divider()
 
+    # --- SECTION 2: IMPORT CHART OF ACCOUNTS ---
     st.subheader("📥 Import Chart of Accounts")
-    up_file = st.file_uploader("Upload CSV", type="csv")
+    up_file = st.file_uploader("Upload CSV", type="csv", help="Ensure your CSV has an 'account_name' column.")
+    
     if up_file:
         import_df = pd.read_csv(up_file).dropna(subset=['account_name'])
+        st.write("Preview of Accounts to be added:")
         st.dataframe(import_df.head())
+        
         if st.button("🚀 Confirm Upload"):
-            import_df.to_sql('chart_of_accounts', engine, if_exists='append', index=False)
-            st.success("Accounts Added!")
+            try:
+                import_df.to_sql('chart_of_accounts', engine, if_exists='append', index=False)
+                st.success(f"Successfully added {len(import_df)} accounts!")
+            except Exception as e:
+                st.error(f"Import failed: {e}")
 
+    st.divider()
+
+    # --- SECTION 3: DANGEROUS OPERATIONS ---
     with st.expander("⚠️ Dangerous Operations"):
+        st.warning("These actions cannot be undone. Be extremely careful.")
+        
         if st.button("🗑️ Wipe All Chart of Accounts"):
-            with engine.connect() as conn:
-                conn.execute(text("TRUNCATE TABLE chart_of_accounts RESTART IDENTITY CASCADE"))
-                conn.commit()
-            st.rerun()
+            try:
+                with engine.connect() as conn:
+                    conn.execute(text("TRUNCATE TABLE chart_of_accounts RESTART IDENTITY CASCADE"))
+                    conn.commit()
+                st.success("All accounts have been cleared.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Wipe failed: {e}")
 
 # --- MODULE: PROFIT & LOSS ---
 elif menu == "Profit & Loss":
