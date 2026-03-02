@@ -163,32 +163,29 @@ def get_next_v(v_type):
 df = load_ledger()
 account_list = load_accounts()
 
-# --- 3. NAVIGATION ---
-if st.session_state["role"] == "Owner":
-    menu_options = [
-        "Dashboard", "Invoicing", "Entry Module", "Payroll Management", 
-        "General Ledger", "Trial Balance", "Profit & Loss", 
-        "Balance Sheet", "Account Statement", "Settings / Import", "Currency Transfers"
-    ]
-else:
-    menu_options = ["Entry Module", "Invoicing", "General Ledger","Account Statement", "Currency Transfers", "Trial Balance"]
-
+# --- 3. NAVIGATION & MODULE LOGIC ---
 menu = st.sidebar.radio("Main Menu", menu_options)
 
-# --- START OF MODULE LOGIC ---
-
-# 1. SEARCH FOR THIS LINE. If it says 'elif', change it to 'if'
+# 1. THE ANCHOR (This MUST be 'if')
 if menu == "Dashboard":
     st.title("📊 Business Dashboard")
     st.write(f"Welcome back, {st.session_state.get('username', 'User')}!")
+    
+    # Quick Summary Metrics
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Status", "System Online")
+    c2.metric("Base Currency", "LKR")
+    c3.metric("User Role", st.session_state.get("role", "Staff"))
 
-# 2. NOW the Entry Module can be an 'elif'
+# 2. THE ENTRY MODULE (Now 'elif' is valid)
 elif menu == "Entry Module":
-    st.title("⚖️ Multi-Row Transaction Entry"))
+    st.title("⚖️ Multi-Row Transaction Entry")
     
     if not account_list:
-        st.warning("Please import Chart of Accounts first.")
+        st.warning("Please import Chart of Accounts first in Settings.")
         st.stop()
+
+    # --- (Paste the rest of the Multi-Currency Entry Module code here) ---
     
     # 1. GENERATE VOUCHER NUMBER
     v_type = st.selectbox("Transaction Type", ["Payment Voucher", "Cash Receipt", "Sales Entry", "Journal Entry"])
