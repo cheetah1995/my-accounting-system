@@ -192,6 +192,40 @@ if menu == "Dashboard":
     c3.metric("User Role", st.session_state.get("role", "Staff"))
 
 # 2. THE ENTRY MODULE
+@st.fragment
+def entry_module_fragment():
+    st.title("⚖️ Multi-Row Transaction Entry")
+    
+    # 2. VOUCHER HEADER
+    with st.container(border=True):
+        c1, c2, c3 = st.columns(3)
+        v_type = c1.selectbox("Type", ["Payment", "Receipt", "Journal", "Sales"])
+        v_no = get_next_v(v_type) # Your existing function
+        date = c2.date_input("Date", datetime.now())
+        currency = c3.selectbox("Currency", ["LKR", "USD", "EUR"])
+
+    # 3. DATA ENTRY TABLE (The part that used to be slow)
+    # We use a unique key and disable some automatic updates
+    edited_df = st.data_editor(
+        default_rows, 
+        column_config={
+            "account": st.column_config.SelectboxColumn("Account", options=account_list),
+            "debit": st.column_config.NumberColumn(f"Debit", format="%.2f"),
+            "credit": st.column_config.NumberColumn(f"Credit", format="%.2f"),
+        },
+        num_rows="dynamic",
+        key="main_entry_table" # Keeping a static key prevents jumping
+    )
+
+    # 4. POSTING BUTTON
+    if st.button("🚀 Post Transaction", use_container_width=True):
+        # ... (Your existing posting logic here) ...
+        st.success("Posted!")
+        st.rerun() # Only rerun the whole app once the job is DONE
+
+# --- 5. CALL THE FRAGMENT IN YOUR MENU ---
+elif menu == "Entry Module":
+    entry_module_fragment()
 elif menu == "Entry Module":
     st.title("⚖️ Multi-Row Transaction Entry")
     
