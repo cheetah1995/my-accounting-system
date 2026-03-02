@@ -365,7 +365,7 @@ elif menu == "Entry Module":
             st.session_state.editor_key += 1 
             st.session_state['last_post'] = None
             st.rerun()
-# --- MODULE: GENERAL LEDGER ---
+
 # --- MODULE: GENERAL LEDGER ---
 elif menu == "General Ledger":
     st.title("📖 General Ledger Archive")
@@ -448,17 +448,23 @@ elif menu == "Trial Balance":
 elif menu == "Settings / Import":
     st.title("⚙️ System Settings")
 
-    if st.button("🛠️ Upgrade Database for Multi-Currency"):
-        try:
-            with engine.connect() as conn:
-                conn.execute(text("ALTER TABLE general_ledger ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'LKR'"))
-                conn.execute(text("ALTER TABLE general_ledger ADD COLUMN IF NOT EXISTS exchange_rate NUMERIC DEFAULT 1.0"))
-                conn.execute(text("ALTER TABLE general_ledger ADD COLUMN IF NOT EXISTS base_amount NUMERIC DEFAULT 0.0"))
-                conn.commit()
-            st.success("✅ Database upgraded! You can now track USD and EUR transactions.")
-        except Exception as e:
-            st.error(f"Update Error: {e}")
-
+ with engine.connect() as conn:
+    # We check if columns exist before adding them to avoid errors
+    existing_columns = pd.read_sql("SELECT * FROM general_ledger LIMIT 0", engine).columns.tolist()
+    
+    updates = [
+        ("currency", "TEXT DEFAULT 'LKR'"),
+        ("exchange_rate", "NUMERIC DEFAULT 1.0"),
+        ("base_amount", "NUMERIC DEFAULT 0.0")
+    ]
+    
+    for col_name, col_type in updates:
+        if col_name not in existing_columns:
+            conn.execute(text(f"ALTER TABLE general_ledger ADD COLUMN {col_name} {col_type}"))
+            st.info(f"Added missing column: {col_name}")
+    
+    conn.commit()
+st.success("Database structure is now synchronized with the Multi-Currency module.")
     # ... rest of your settings code ...
     
     with st.expander("Dangerous: Database Reset"):
