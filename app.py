@@ -223,16 +223,25 @@ def entry_module_fragment():
         st.success("Posted!")
         st.rerun() # Only rerun the whole app once the job is DONE
 
-# --- 5. CALL THE FRAGMENT IN YOUR MENU ---
+# --- 5. MODULE ROUTING ---
+
+# 1. First, check for Home or Dashboard
+if menu == "Dashboard":
+    st.title("📊 Dashboard")
+    # your dashboard code here...
+
+# 2. Then use ELIF for everything else
 elif menu == "Entry Module":
+    # Call your fragment function here
     entry_module_fragment()
 
-elif menu == "Entry Module":
-    st.title("⚖️ Multi-Row Transaction Entry")
-    
-    if not account_list:
-        st.warning("Please import Chart of Accounts first in Settings.")
-        st.stop()
+elif menu == "Account Statement":
+    # your statement code...
+    pass
+
+elif menu == "Void & Audit":
+    # your void code...
+    pass
     
     # 1. GENERATE VOUCHER NUMBER
     v_type = st.selectbox("Transaction Type", ["Payment Voucher", "Cash Receipt", "Sales Entry", "Journal Entry"])
