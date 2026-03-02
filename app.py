@@ -164,27 +164,34 @@ df = load_ledger()
 account_list = load_accounts()
 
 # --- 3. NAVIGATION ---
-# --- DYNAMIC NAVIGATION ---
 if st.session_state["role"] == "Owner":
-    # Owner sees everything
     menu_options = [
         "Dashboard", "Invoicing", "Entry Module", "Payroll Management", 
         "General Ledger", "Trial Balance", "Profit & Loss", 
         "Balance Sheet", "Account Statement", "Settings / Import", "Currency Transfers"
     ]
 else:
-    # Staff only sees operational tools
     menu_options = ["Entry Module", "Invoicing", "General Ledger","Account Statement", "Currency Transfers", "Trial Balance"]
 
 menu = st.sidebar.radio("Main Menu", menu_options)
 
-# --- MODULE: ENTRY MODULE ---
+# --- START OF MODULE LOGIC ---
+
+# 1. THE BRIDGE: This MUST be an 'if'
+if menu == "Dashboard":
+    st.title("📊 Business Dashboard")
+    st.write(f"Welcome back, {st.session_state.get('username', 'User')}!")
+    # (You can add your dashboard metrics here later)
+
+# 2. THE ENTRY MODULE: Now this can be an 'elif'
 elif menu == "Entry Module":
     st.title("⚖️ Multi-Row Transaction Entry")
     
     if not account_list:
         st.warning("Please import Chart of Accounts first.")
         st.stop()
+    
+    # ... rest of your Entry Module code ...
 
     # 1. GENERATE VOUCHER NUMBER
     v_type = st.selectbox("Transaction Type", ["Payment Voucher", "Cash Receipt", "Sales Entry", "Journal Entry"])
