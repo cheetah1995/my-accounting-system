@@ -226,6 +226,7 @@ def entry_module_fragment():
 # --- 5. CALL THE FRAGMENT IN YOUR MENU ---
 elif menu == "Entry Module":
     entry_module_fragment()
+
 elif menu == "Entry Module":
     st.title("⚖️ Multi-Row Transaction Entry")
     
