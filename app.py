@@ -191,15 +191,13 @@ if menu == "Dashboard":
     c2.metric("Base Currency", "LKR")
     c3.metric("User Role", st.session_state.get("role", "Staff"))
 
-# 2. THE ENTRY MODULE (Now 'elif' is valid)
+# 2. THE ENTRY MODULE
 elif menu == "Entry Module":
     st.title("⚖️ Multi-Row Transaction Entry")
     
     if not account_list:
         st.warning("Please import Chart of Accounts first in Settings.")
         st.stop()
-
-    # --- (Paste the rest of the Multi-Currency Entry Module code here) ---
     
     # 1. GENERATE VOUCHER NUMBER
     v_type = st.selectbox("Transaction Type", ["Payment Voucher", "Cash Receipt", "Sales Entry", "Journal Entry"])
@@ -211,38 +209,33 @@ elif menu == "Entry Module":
     if "editor_key" not in st.session_state:
         st.session_state.editor_key = 0
 
-   # Corrected Line 196:
-    default_rows = [{"account": None, "description": "", "amount": 0.0, "type": "Debit"} for _ in range(2)]
+    # Classic Debit/Credit starting rows
+    default_rows = [{"account": None, "description": "", "debit": 0.0, "credit": 0.0} for _ in range(2)]
 
-    # 3. HEADER FORM (Extended for Currency)
+    # 3. HEADER FORM
     with st.container(border=True):
         c1, c2, c3 = st.columns(3)
         date = c1.date_input("Date", datetime.now())
         party = c2.text_input("Payee/Customer", placeholder="e.g. Ethiquable France")
         ref = c3.text_input("Reference/Ref", placeholder="e.g. Inv-001")
         
-        # --- NEW CURRENCY SECTION ---
         f1, f2, f3 = st.columns(3)
-        sel_currency = f1.selectbox("Transaction Currency", ["LKR", "USD", "EUR"])
+        sel_currency = f1.selectbox("Currency", ["LKR", "USD", "EUR"])
         
-        # Auto-suggest rates (can be edited)
-        default_rate = 1.0
-        if sel_currency == "USD": default_rate = 309.44
-        elif sel_currency == "EUR": default_rate = 335.50
-        
-        ex_rate = f2.number_input("Exchange Rate", min_value=1.0, value=default_rate, step=0.01, format="%.2f", disabled=(sel_currency=="LKR"))
-        desc = f3.text_input("General Remarks", placeholder="Enter transaction details...")
+        # Suggested Rates logic
+        rates = {"LKR": 1.0, "USD": 309.44, "EUR": 335.50}
+        ex_rate = f2.number_input("Exchange Rate", min_value=1.0, value=rates.get(sel_currency, 1.0), step=0.01)
+        desc = f3.text_input("General Remarks", placeholder="Enter overall transaction details...")
 
     st.markdown(f"### Transaction Lines ({sel_currency})")
-    st.caption(f"All amounts below will be recorded as {sel_currency} and converted at {ex_rate}")
     
-    # 4. DATA EDITOR
+    # 4. DATA EDITOR (Reinstated Debit/Credit Columns)
     edited_df = st.data_editor(
         default_rows, 
         column_config={
             "account": st.column_config.SelectboxColumn("Account", options=account_list, required=True),
-            "amount": st.column_config.NumberColumn(f"Amount ({sel_currency})", min_value=0, format="%.2f"),
-            "type": st.column_config.SelectboxColumn("Type", options=["Debit", "Credit"], required=True),
+            "debit": st.column_config.NumberColumn(f"Debit ({sel_currency})", min_value=0, format="%.2f"),
+            "credit": st.column_config.NumberColumn(f"Credit ({sel_currency})", min_value=0, format="%.2f"),
             "description": st.column_config.TextColumn("Line Note")
         }, 
         num_rows="dynamic", 
@@ -252,32 +245,36 @@ elif menu == "Entry Module":
 
     lines_df = pd.DataFrame(edited_df)
     
-    # Calculation Logic for Totals
-    total_dr_fx = lines_df[lines_df['type'] == 'Debit']['amount'].sum()
-    total_cr_fx = lines_df[lines_df['type'] == 'Credit']['amount'].sum()
+    # Summing the FX values entered in the table
+    total_dr_fx = lines_df['debit'].sum()
+    total_cr_fx = lines_df['credit'].sum()
     diff_fx = round(total_dr_fx - total_cr_fx, 2)
     
-    # LKR Values for Metrics
+    # Calculating LKR equivalents for the General Ledger
     total_dr_lkr = total_dr_fx * ex_rate
     total_cr_lkr = total_cr_fx * ex_rate
 
     st.divider()
     m1, m2, m3 = st.columns(3)
-    m1.metric(f"Total DR ({sel_currency})", f"{total_dr_fx:,.2f}", f"Rs. {total_dr_lkr:,.0f}")
-    m2.metric(f"Total CR ({sel_currency})", f"{total_cr_fx:,.2f}", f"Rs. {total_cr_lkr:,.0f}")
+    m1.metric(f"Total DR ({sel_currency})", f"{total_dr_fx:,.2f}", f"Rs. {total_dr_lkr:,.0f} LKR")
+    m2.metric(f"Total CR ({sel_currency})", f"{total_cr_fx:,.2f}", f"Rs. {total_cr_lkr:,.0f} LKR")
     m3.metric("Status", "Balanced" if diff_fx == 0 else "Out of Balance", delta=diff_fx, delta_color="inverse")
     
     # 5. POSTING LOGIC
-    if st.button("🚀 Post Multi-Currency Transaction", use_container_width=True):
-        if diff_fx == 0 and total_dr_fx > 0:
+    if st.button("🚀 Post Transaction", use_container_width=True):
+        if diff_fx == 0 and (total_dr_fx > 0):
             final_entries = []
             current_user = st.session_state.get("username", "System")
             
             for _, r in lines_df.iterrows():
-                if r['amount'] > 0 and r['account'] is not None:
-                    # Determine Dr/Cr split
-                    dr_val = r['amount'] * ex_rate if r['type'] == 'Debit' else 0
-                    cr_val = r['amount'] * ex_rate if r['type'] == 'Credit' else 0
+                # Check if row has data
+                if (r['debit'] > 0 or r['credit'] > 0) and r['account'] is not None:
+                    # Convert FX amount to LKR for the main columns
+                    lkr_debit = round(r['debit'] * ex_rate, 2)
+                    lkr_credit = round(r['credit'] * ex_rate, 2)
+                    
+                    # Determine the "Base Amount" (the actual USD/EUR value)
+                    base_amt = r['debit'] if r['debit'] > 0 else r['credit']
                     
                     final_entries.append({
                         'voucher_no': v_no, 
@@ -287,11 +284,11 @@ elif menu == "Entry Module":
                         'ref_no': ref, 
                         'description': r['description'] if r['description'] else desc,
                         'account_name': r['account'], 
-                        'debit': dr_val, 
-                        'credit': cr_val,
+                        'debit': lkr_debit, 
+                        'credit': lkr_credit,
                         'currency': sel_currency,
                         'exchange_rate': ex_rate,
-                        'base_amount': r['amount'],
+                        'base_amount': base_amt,
                         'created_by': current_user,
                         'is_void': 0,
                         'void_reason': None
@@ -308,17 +305,18 @@ elif menu == "Entry Module":
                         'party': party, 'ref': ref, 'desc': desc, 
                         'lines': final_entries
                     }
-                    st.success(f"Successfully Posted {v_no} ({sel_currency})!")
+                    st.success(f"Successfully Posted {v_no} in {sel_currency}!")
                     st.balloons()
                     st.rerun()
             except Exception as e:
                 st.error(f"SQL Error: {e}")
         else:
-            st.error(f"Cannot post: Transaction must balance in {sel_currency}.")
+            st.error(f"Cannot post: Debits must equal Credits in {sel_currency}.")
 
-    # 6. DOWNLOAD & RESET
+    # 6. DOWNLOAD & RESET (Restored)
     if st.session_state.get('last_post'):
         lp = st.session_state['last_post']
+        # Note: PDF generator will show the LKR values by default
         pdf_file = generate_voucher_pdf(
             v_no=lp['v_no'], v_type=lp['v_type'], date=lp['date'], 
             party=lp['party'], ref=lp['ref'], desc=lp['desc'], 
@@ -326,7 +324,7 @@ elif menu == "Entry Module":
         )
         
         st.download_button(
-            label=f"📥 Download PDF Voucher", 
+            label=f"📥 Download Voucher {lp['v_no']} (PDF)", 
             data=pdf_file, 
             file_name=f"Voucher_{lp['v_no']}.pdf", 
             mime="application/pdf", 
