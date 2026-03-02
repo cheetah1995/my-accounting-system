@@ -178,68 +178,7 @@ else:
 
 menu = st.sidebar.radio("Main Menu", menu_options)
 
-# --- MODULE: SETTINGS / IMPORT ---
-if menu == "Settings / Import":
-    st.title("⚙️ Admin Settings")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("1. Download Template")
-        template_data = pd.DataFrame({
-            'account_name': ['Cash in Hand', 'Bank Account', 'Sales Revenue', 'Rent Expense'],
-            'account_type': ['Asset', 'Asset', 'Revenue', 'Expense']
-        })
-        template_csv = template_data.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download CSV Template", data=template_csv, file_name="coa_template.csv", mime="text/csv")
-    
-    with col2:
-        st.subheader("2. Reset Database")
-        if st.button("🗑️ Clear All Accounts"):
-            with engine.connect() as conn:
-                conn.execute(text("TRUNCATE TABLE chart_of_accounts RESTART IDENTITY CASCADE"))
-                conn.commit()
-            st.warning("Chart of Accounts cleared!")
-            st.rerun()
 
-    st.divider()
-    st.subheader("3. Upload Chart of Accounts")
-    uploaded_file = st.file_uploader("Choose your formatted CSV file", type="csv")
-    
-    if uploaded_file is not None:
-        try:
-            import_df = pd.read_csv(uploaded_file)
-        except UnicodeDecodeError:
-            uploaded_file.seek(0)
-            import_df = pd.read_csv(uploaded_file, encoding='latin-1')
-        
-        import_df = import_df.dropna(subset=['account_name'])
-        st.write("Preview:", import_df.head())
-        
-        if st.button("🚀 Push to Database"):
-            try:
-                import_df.to_sql('chart_of_accounts', engine, if_exists='append', index=False)
-                st.success(f"Imported {len(import_df)} accounts!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Import failed. Duplicate names might be present.")
-st.divider()
-st.subheader("💾 System Backup")
-st.write("Download a full copy of your General Ledger for safekeeping.")
-
-if st.button("📦 Generate Full Backup"):
-    try:
-        backup_df = pd.read_sql("SELECT * FROM general_ledger", engine)
-        csv_backup = backup_df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="⬇️ Download Backup (CSV)",
-            data=csv_backup,
-            file_name=f"EthicalTeas_Backup_{datetime.now().strftime('%Y-%m-%d')}.csv",
-            mime="text/csv"
-        )
-        st.success("Backup ready! Keep this file on an external drive.")
-    except Exception as e:
-        st.error(f"Backup failed: {e}")
 # --- MODULE: ENTRY MODULE ---
 elif menu == "Entry Module":
     st.title("⚖️ Multi-Row Transaction Entry")
@@ -444,85 +383,103 @@ elif menu == "Trial Balance":
         st.metric("Ledger Balance Status", "Balanced" if round(dr_sum,2) == round(cr_sum,2) else "Imbalanced", delta=round(dr_sum-cr_sum,2))
     else: st.warning("No data.")
 
-# --- MODULE: SETTINGS ---
+# --- MODULE: SETTINGS / ADMIN ---
 elif menu == "Settings / Import":
-    st.title("⚙️ System Settings")
-
-    # --- SECTION 1: DATABASE MAINTENANCE ---
-    st.subheader("🛠️ Database Maintenance")
-    st.info("Use this to update the database structure if you encounter 'Missing Column' errors.")
+    st.title("⚙️ Admin & System Settings")
     
-    if st.button("🔄 Force Synchronize All Columns"):
-        try:
-            with engine.connect() as conn:
-                # 1. Get current columns in the ledger
-                existing_cols = pd.read_sql("SELECT * FROM general_ledger LIMIT 0", engine).columns.tolist()
-                
-                # 2. Comprehensive column list to prevent errors in Invoicing, Receipts, and Transfers
-                updates = [
-                    ("currency", "TEXT DEFAULT 'LKR'"),
-                    ("exchange_rate", "NUMERIC DEFAULT 1.0"),
-                    ("base_amount", "NUMERIC DEFAULT 0.0"),
-                    ("created_by", "TEXT"),
-                    ("is_void", "INTEGER DEFAULT 0"),
-                    ("void_reason", "TEXT"),                 # NEW: Required for Receipts/Voiding
-                    ("ref_no", "TEXT"),                      # NEW: Required for Invoice References
-                    ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-                ]
-                
-                added_any = False
-                for col_name, col_type in updates:
-                    if col_name not in existing_cols:
-                        conn.execute(text(f"ALTER TABLE general_ledger ADD COLUMN {col_name} {col_type}"))
-                        st.info(f"Successfully added column: {col_name}")
-                        added_any = True
-                
-                conn.commit()
-                # 3. Refresh connection pool
-                engine.dispose()
-                
-                if added_any:
-                    st.success("✅ Database synchronization successful! New columns (including void_reason) are ready.")
-                    st.balloons()
-                else:
-                    st.success("✅ Database is already fully synchronized.")
-                    
-        except Exception as e:
-            st.error(f"Sync Error: {e}")
-
-    st.divider()
-
-    # --- SECTION 2: IMPORT CHART OF ACCOUNTS ---
-    st.subheader("📥 Import Chart of Accounts")
-    up_file = st.file_uploader("Upload CSV", type="csv", help="Ensure your CSV has an 'account_name' column.")
+    # --- ROW 1: UTILITIES ---
+    col1, col2 = st.columns(2)
     
-    if up_file:
-        import_df = pd.read_csv(up_file).dropna(subset=['account_name'])
-        st.write("Preview of Accounts to be added:")
-        st.dataframe(import_df.head())
-        
-        if st.button("🚀 Confirm Upload"):
-            try:
-                import_df.to_sql('chart_of_accounts', engine, if_exists='append', index=False)
-                st.success(f"Successfully added {len(import_df)} accounts!")
-            except Exception as e:
-                st.error(f"Import failed: {e}")
-
-    st.divider()
-
-    # --- SECTION 3: DANGEROUS OPERATIONS ---
-    with st.expander("⚠️ Dangerous Operations"):
-        st.warning("These actions cannot be undone. Be extremely careful.")
-        
-        if st.button("🗑️ Wipe All Chart of Accounts"):
+    with col1:
+        st.subheader("1. Download Template")
+        template_data = pd.DataFrame({
+            'account_name': ['Cash in Hand', 'Bank Account', 'Sales Revenue', 'Rent Expense'],
+            'account_type': ['Asset', 'Asset', 'Revenue', 'Expense']
+        })
+        template_csv = template_data.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download CSV Template", data=template_csv, file_name="coa_template.csv", mime="text/csv")
+    
+    with col2:
+        st.subheader("2. Database Sync")
+        if st.button("🔄 Force Synchronize Columns", use_container_width=True):
             try:
                 with engine.connect() as conn:
-                    conn.execute(text("TRUNCATE TABLE chart_of_accounts RESTART IDENTITY CASCADE"))
+                    existing_cols = pd.read_sql("SELECT * FROM general_ledger LIMIT 0", engine).columns.tolist()
+                    updates = [
+                        ("currency", "TEXT DEFAULT 'LKR'"),
+                        ("exchange_rate", "NUMERIC DEFAULT 1.0"),
+                        ("base_amount", "NUMERIC DEFAULT 0.0"),
+                        ("created_by", "TEXT"),
+                        ("is_void", "INTEGER DEFAULT 0"),
+                        ("void_reason", "TEXT"),
+                        ("ref_no", "TEXT"),
+                        ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                    ]
+                    for col_name, col_type in updates:
+                        if col_name not in existing_cols:
+                            conn.execute(text(f"ALTER TABLE general_ledger ADD COLUMN {col_name} {col_type}"))
                     conn.commit()
-                st.success("All accounts have been cleared.")
+                    engine.dispose()
+                st.success("✅ System columns synchronized!")
+            except Exception as e:
+                st.error(f"Sync failed: {e}")
+
+    st.divider()
+
+    # --- ROW 2: DATA IMPORT ---
+    st.subheader("3. Upload Chart of Accounts")
+    uploaded_file = st.file_uploader("Choose your formatted CSV file", type="csv")
+    
+    if uploaded_file:
+        try:
+            import_df = pd.read_csv(uploaded_file)
+        except UnicodeDecodeError:
+            uploaded_file.seek(0)
+            import_df = pd.read_csv(uploaded_file, encoding='latin-1')
+        
+        import_df = import_df.dropna(subset=['account_name'])
+        st.write("Preview:", import_df.head())
+        
+        if st.button("🚀 Push to Database"):
+            try:
+                import_df.to_sql('chart_of_accounts', engine, if_exists='append', index=False)
+                st.success(f"Imported {len(import_df)} accounts!")
                 st.rerun()
             except Exception as e:
-                st.error(f"Wipe failed: {e}")
+                st.error("Import failed. Duplicate names might be present.")
+
+    st.divider()
+
+    # --- ROW 3: BACKUP & DANGER ZONE ---
+    c_a, c_b = st.columns(2)
+    
+    with c_a:
+        st.subheader("💾 System Backup")
+        if st.button("📦 Generate Full Ledger Backup"):
+            try:
+                backup_df = pd.read_sql("SELECT * FROM general_ledger", engine)
+                csv_backup = backup_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="⬇️ Download Backup (CSV)",
+                    data=csv_backup,
+                    file_name=f"EthicalTeas_Backup_{datetime.now().strftime('%Y-%m-%d')}.csv",
+                    mime="text/csv"
+                )
+            except Exception as e:
+                st.error(f"Backup failed: {e}")
+
+    with c_b:
+        st.subheader("⚠️ Danger Zone")
+        with st.expander("Reset Operations"):
+            if st.button("🗑️ Wipe All Chart of Accounts"):
+                try:
+                    with engine.connect() as conn:
+                        conn.execute(text("TRUNCATE TABLE chart_of_accounts RESTART IDENTITY CASCADE"))
+                        conn.commit()
+                    st.warning("Chart of Accounts cleared!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Wipe failed: {e}")
 
 # --- MODULE: PROFIT & LOSS ---
 elif menu == "Profit & Loss":
