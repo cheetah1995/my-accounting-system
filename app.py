@@ -178,7 +178,6 @@ else:
 
 menu = st.sidebar.radio("Main Menu", menu_options)
 
-
 # --- MODULE: ENTRY MODULE ---
 elif menu == "Entry Module":
     st.title("⚖️ Multi-Row Transaction Entry")
