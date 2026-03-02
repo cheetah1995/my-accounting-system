@@ -186,18 +186,18 @@ elif menu == "Entry Module":
         st.warning("Please import Chart of Accounts first.")
         st.stop()
 
-    # 1. GENERATE VOUCHER NUMBER (Always visible at top)
+    # 1. GENERATE VOUCHER NUMBER
     v_type = st.selectbox("Transaction Type", ["Payment Voucher", "Cash Receipt", "Sales Entry", "Journal Entry"])
     v_no = get_next_v(v_type)
     
     st.subheader(f"Document No: {v_no}")
 
-    # 2. RESET LOGIC FOR NEW ENTRIES
+    # 2. RESET LOGIC
     if "editor_key" not in st.session_state:
-        st.session_state.editor_key = 0  # We use this to force-refresh the data_editor
+        st.session_state.editor_key = 0
 
-    # Define default empty rows
-    default_rows = [{"account": None, "description": "", "debit": 0.0, "credit": 0.0}] * 2
+    # Correcting the row definition to avoid reference bugs
+    default_rows = [{"account": None, "description": "", "debit": 0.0, "credit": 0.0} for _ in range(2)]
 
     # 3. HEADER FORM
     with st.container(border=True):
@@ -209,7 +209,7 @@ elif menu == "Entry Module":
 
     st.markdown("### Transaction Lines")
     
-    # 4. DATA EDITOR (Using a dynamic key to allow clearing)
+    # 4. DATA EDITOR
     edited_df = st.data_editor(
         default_rows, 
         column_config={
@@ -220,7 +220,7 @@ elif menu == "Entry Module":
         }, 
         num_rows="dynamic", 
         use_container_width=True, 
-        key=f"editor_{st.session_state.editor_key}" # Changing this key wipes the table
+        key=f"editor_{st.session_state.editor_key}" 
     )
 
     lines_df = pd.DataFrame(edited_df)
@@ -234,16 +234,15 @@ elif menu == "Entry Module":
     m2.metric("Total CR", f"{total_cr:,.2f}")
     m3.metric("Balance Status", "Balanced" if diff == 0 else "Out of Balance", delta=diff, delta_color="inverse")
     
-  # 5. POSTING LOGIC
+    # 5. POSTING LOGIC
     if st.button("🚀 Post Transaction", use_container_width=True):
         if diff == 0 and total_dr > 0:
             final_entries = []
-            
-            # Identify who is logged in (default to 'System' if session state is missing)
             current_user = st.session_state.get("username", "System")
             
             for _, r in lines_df.iterrows():
-                if (r['debit'] > 0 or r['credit'] > 0) and r['account'] is not None:
+                # Only process rows that have values and an account selected
+                if (r.get('debit', 0) > 0 or r.get('credit', 0) > 0) and r.get('account') is not None:
                     final_entries.append({
                         'voucher_no': v_no, 
                         'tr_type': v_type, 
@@ -254,34 +253,38 @@ elif menu == "Entry Module":
                         'account_name': r['account'], 
                         'debit': r['debit'], 
                         'credit': r['credit'],
-                        # --- NEW COMMERCIAL COLUMNS ---
+                        # --- UPDATED COLUMNS FOR COMPATIBILITY ---
+                        'currency': 'LKR',
+                        'exchange_rate': 1.0,
+                        'base_amount': r['debit'] if r['debit'] > 0 else r['credit'],
                         'created_by': current_user,
-                        'created_at': datetime.now(),
                         'is_void': 0,
                         'void_reason': None
                     })
             
             try:
-                # Post to database
-                pd.DataFrame(final_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
-                
-                # Save PDF data BEFORE we clear the screen
-                st.session_state['last_post'] = {
-                    'v_no': v_no, 'v_type': v_type, 'date': date, 
-                    'party': party, 'ref': ref, 'desc': desc, 
-                    'lines': final_entries
-                }
-                st.success(f"Successfully Posted {v_no} by {current_user}!")
-                st.rerun()
+                if not final_entries:
+                    st.warning("No valid rows to post.")
+                else:
+                    pd.DataFrame(final_entries).to_sql('general_ledger', engine, if_exists='append', index=False)
+                    
+                    # Store for PDF
+                    st.session_state['last_post'] = {
+                        'v_no': v_no, 'v_type': v_type, 'date': date, 
+                        'party': party, 'ref': ref, 'desc': desc, 
+                        'lines': final_entries
+                    }
+                    st.success(f"Successfully Posted {v_no}!")
+                    st.balloons()
+                    st.rerun()
             except Exception as e:
-                st.error(f"SQL Error: {e}. Check if you ran the 'Upgrade Database' button in Settings.")
+                st.error(f"SQL Error: {e}")
         else:
             st.error("Cannot post: Check if accounts are selected and Debits = Credits.")
 
-    # 6. DOWNLOAD & RESET BUTTONS
-    if 'last_post' in st.session_state and st.session_state['last_post'] is not None:
+    # 6. DOWNLOAD & RESET
+    if st.session_state.get('last_post'):
         lp = st.session_state['last_post']
-        
         pdf_file = generate_voucher_pdf(
             v_no=lp['v_no'], v_type=lp['v_type'], date=lp['date'], 
             party=lp['party'], ref=lp['ref'], desc=lp['desc'], 
@@ -297,9 +300,6 @@ elif menu == "Entry Module":
         )
         
         if st.button("➕ Create Another New Entry", type="primary"):
-            # This is the "Clear" magic: 
-            # 1. Change the key to reset the table
-            # 2. Clear the last_post session state
             st.session_state.editor_key += 1 
             st.session_state['last_post'] = None
             st.rerun()
