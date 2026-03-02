@@ -448,64 +448,50 @@ elif menu == "Trial Balance":
 elif menu == "Settings / Import":
     st.title("⚙️ System Settings")
 
-    # --- SECTION 1: DATABASE MAINTENANCE ---
-if st.button("🔄 Synchronize Database Columns"):
-    try:
-        with engine.connect() as conn:
-            # Check current columns
-            existing_cols = pd.read_sql("SELECT * FROM general_ledger LIMIT 0", engine).columns.tolist()
-            
-            # ALL required columns for Currency & Audit
-            required_updates = [
-                ("currency", "TEXT DEFAULT 'LKR'"),
-                ("exchange_rate", "NUMERIC DEFAULT 1.0"),
-                ("base_amount", "NUMERIC DEFAULT 0.0"),
-                ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP") # Adding the audit column
-            ]
-            
-            for col_name, col_type in required_updates:
-                if col_name not in existing_cols:
-                    conn.execute(text(f"ALTER TABLE general_ledger ADD COLUMN {col_name} {col_type}"))
-                    st.info(f"Added: {col_name}")
-            
-            conn.commit()
-            engine.dispose() # Reset the engine
-            st.success("✅ Database structure is now 100% synchronized.")
-    except Exception as e:
-        st.error(f"Sync failed: {e}")
+    st.subheader("🛠️ Database Maintenance")
+    if st.button("🔄 Force Synchronize All Columns"):
+        try:
+            with engine.connect() as conn:
+                # Get current state
+                existing_cols = pd.read_sql("SELECT * FROM general_ledger LIMIT 0", engine).columns.tolist()
+                
+                # Define every column the Multi-Currency module needs
+                updates = [
+                    ("currency", "TEXT DEFAULT 'LKR'"),
+                    ("exchange_rate", "NUMERIC DEFAULT 1.0"),
+                    ("base_amount", "NUMERIC DEFAULT 0.0"),
+                    ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                ]
+                
+                for col_name, col_type in updates:
+                    if col_name not in existing_cols:
+                        conn.execute(text(f"ALTER TABLE general_ledger ADD COLUMN {col_name} {col_type}"))
+                        st.info(f"Added column: {col_name}")
+                
+                conn.commit()
+                # Crucial: This kills the old connection so the app MUST see the new columns
+                engine.dispose()
+                st.success("✅ Database Sync Complete. Please refresh your browser (F5) now.")
+        except Exception as e:
+            st.error(f"Sync Error: {e}")
 
     st.divider()
 
-    # --- SECTION 2: IMPORT DATA ---
     st.subheader("📥 Import Chart of Accounts")
     up_file = st.file_uploader("Upload CSV", type="csv")
-    
     if up_file:
         import_df = pd.read_csv(up_file).dropna(subset=['account_name'])
-        st.write("Preview of data to import:")
         st.dataframe(import_df.head())
-        
         if st.button("🚀 Confirm Upload"):
-            try:
-                import_df.to_sql('chart_of_accounts', engine, if_exists='append', index=False)
-                st.success(f"Successfully added {len(import_df)} accounts!")
-            except Exception as e:
-                st.error(f"Import failed: {e}")
+            import_df.to_sql('chart_of_accounts', engine, if_exists='append', index=False)
+            st.success("Accounts Added!")
 
-    st.divider()
-
-    # --- SECTION 3: DANGEROUS OPERATIONS ---
-    with st.expander("⚠️ Dangerous: Database Reset"):
-        st.warning("These actions cannot be undone. Use with extreme caution.")
+    with st.expander("⚠️ Dangerous Operations"):
         if st.button("🗑️ Wipe All Chart of Accounts"):
-            try:
-                with engine.connect() as conn:
-                    conn.execute(text("TRUNCATE TABLE chart_of_accounts RESTART IDENTITY CASCADE"))
-                    conn.commit()
-                st.success("Chart of Accounts cleared!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Reset failed: {e}")
+            with engine.connect() as conn:
+                conn.execute(text("TRUNCATE TABLE chart_of_accounts RESTART IDENTITY CASCADE"))
+                conn.commit()
+            st.rerun()
 
 # --- MODULE: PROFIT & LOSS ---
 elif menu == "Profit & Loss":
