@@ -449,38 +449,30 @@ elif menu == "Settings / Import":
     st.title("⚙️ System Settings")
 
     # --- SECTION 1: DATABASE MAINTENANCE ---
-    st.subheader("🛠️ System Maintenance")
-    
-    # We wrap the update in a button so it doesn't run on every page load
-    if st.button("🔄 Synchronize Database Columns"):
-        try:
-            with engine.connect() as conn:
-                # 1. Fetch current columns to see what's missing
-                existing_cols = pd.read_sql("SELECT * FROM general_ledger LIMIT 0", engine).columns.tolist()
-                
-                updates = [
-                    ("currency", "TEXT DEFAULT 'LKR'"),
-                    ("exchange_rate", "NUMERIC DEFAULT 1.0"),
-                    ("base_amount", "NUMERIC DEFAULT 0.0")
-                ]
-                
-                added_any = False
-                for col_name, col_type in updates:
-                    if col_name not in existing_cols:
-                        conn.execute(text(f"ALTER TABLE general_ledger ADD COLUMN {col_name} {col_type}"))
-                        st.info(f"Added missing column: {col_name}")
-                        added_any = True
-                
-                conn.commit()
-                # 2. Reset the connection pool to recognize new columns
-                engine.dispose()
-                
-                if added_any:
-                    st.success("Database structure updated successfully!")
-                else:
-                    st.success("Database is already up to date.")
-        except Exception as e:
-            st.error(f"Maintenance Error: {e}")
+if st.button("🔄 Synchronize Database Columns"):
+    try:
+        with engine.connect() as conn:
+            # Check current columns
+            existing_cols = pd.read_sql("SELECT * FROM general_ledger LIMIT 0", engine).columns.tolist()
+            
+            # ALL required columns for Currency & Audit
+            required_updates = [
+                ("currency", "TEXT DEFAULT 'LKR'"),
+                ("exchange_rate", "NUMERIC DEFAULT 1.0"),
+                ("base_amount", "NUMERIC DEFAULT 0.0"),
+                ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP") # Adding the audit column
+            ]
+            
+            for col_name, col_type in required_updates:
+                if col_name not in existing_cols:
+                    conn.execute(text(f"ALTER TABLE general_ledger ADD COLUMN {col_name} {col_type}"))
+                    st.info(f"Added: {col_name}")
+            
+            conn.commit()
+            engine.dispose() # Reset the engine
+            st.success("✅ Database structure is now 100% synchronized.")
+    except Exception as e:
+        st.error(f"Sync failed: {e}")
 
     st.divider()
 
